@@ -1,5 +1,8 @@
 # Optional heavy dependencies — install only when needed.
-# ASR (real speech-to-text). Works fully offline after first model download.
+# ASR (real speech-to-text, POST /api/asr/transcribe + HMI mic buttons).
+# Installed in the Docker image by default with Whisper "base" weights
+# baked in at build time (air-gap safe). Local pip installs download the
+# weights on first use.
 faster-whisper>=1.0
 # Live webcam marshalling recognition (POST /api/vision/pose).
 # Installed in the Docker image by default. opencv comes as a mediapipe

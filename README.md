@@ -34,7 +34,7 @@ docker compose ps           # healthcheck: /healthz
 ## Architecture
 
 ```
-[ATC voice (optional: faster-whisper)] ─→ text ─→ normalizer ─→ slot extraction ─┐
+[mic/ATC voice → faster-whisper ASR] ─→ text ─→ normalizer ─→ slot extraction ─┐
                                                                                  ├─→ verifier ─→ RiskEngine ─→ alerts/WS
 [webcam/CCTV frame → mediapipe pose] ─→ keypoints ─→ joint-angle features ─→ 11-signal classifier ─┘     ↑
                                                                           runway occupancy state ────────┘
@@ -43,6 +43,8 @@ docker compose ps           # healthcheck: /healthz
 
 - **Offline-first**: no CDN or external calls. Heavy ASR/vision dependencies are optional
   (`requirements-optional.txt`); when absent the API responds explicitly with 503.
+  The Docker image ships both: mediapipe pose models and Whisper "base" weights are
+  baked in at build time and the container runs with `HF_HUB_OFFLINE=1` (air-gap safe).
 - **Scaling path**: the rule-based classifier shares the `window_features` interface with the
   planned 1D-CNN/Bi-LSTM upgrade. RiskEngine state is single-node by design; for multi-instance
   deployment swap in a shared store (e.g. Redis) behind the same interface (see code comments).
@@ -84,7 +86,7 @@ docker compose ps           # healthcheck: /healthz
 | Endpoint | Description |
 |---|---|
 | `POST /api/comms/verify` | instruction/readback text → slot comparison + alerts |
-| `POST /api/asr/transcribe` | speech → text (when faster-whisper is installed) |
+| `POST /api/asr/transcribe` | speech → text + slot extraction (whisper "base" baked into Docker image; HMI mic buttons) |
 | `POST /api/runway/occupancy` | set/clear runway occupancy |
 | `POST /api/vision/pose` | webcam frame (JPEG body) → pose keypoints (mediapipe, bundled in Docker image) |
 | `POST /api/vision/classify` | keypoint window → signal classification |

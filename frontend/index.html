@@ -69,10 +69,16 @@
     <!-- ── readback verification ──────────────────── -->
     <section class="panel" id="panel-comms">
       <h2><span class="tag">SYS:01</span> READBACK VERIFICATION <span class="h2-en">ATC COMMS</span></h2>
-      <label for="instruction">CONTROLLER INSTRUCTION</label>
+      <div class="label-row">
+        <label for="instruction">CONTROLLER INSTRUCTION</label>
+        <button class="mic" data-target="instruction" title="Dictate via microphone">&#9679; REC</button>
+      </div>
       <textarea id="instruction" rows="2"
         placeholder="KAF502, taxi to runway 36 via alpha, hold short of runway 36"></textarea>
-      <label for="readback">PILOT READBACK</label>
+      <div class="label-row">
+        <label for="readback">PILOT READBACK</label>
+        <button class="mic" data-target="readback" title="Dictate via microphone">&#9679; REC</button>
+      </div>
       <textarea id="readback" rows="2"
         placeholder="Taxi to runway 36 via alpha, hold short of runway 36, KAF502"></textarea>
       <div class="row">

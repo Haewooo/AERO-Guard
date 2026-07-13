@@ -175,18 +175,24 @@ async def list_signals() -> dict[str, Any]:
 # ── optional ASR ───────────────────────────────────────────────────
 @router.post("/asr/transcribe")
 async def transcribe_audio(request: Request) -> dict[str, Any]:
+    from fastapi.concurrency import run_in_threadpool
+
     from ..audio.asr import ASRUnavailableError, transcribe
 
     body = await request.body()
     if not body or len(body) > 50 * 1024 * 1024:
         raise HTTPException(status_code=422, detail="empty or oversized audio body")
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+    # PyAV sniffs the container format from content, so the suffix is
+    # cosmetic — browsers send webm/opus, tools may send wav.
+    with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as tmp:
         tmp.write(body)
         tmp_path = tmp.name
     try:
-        result = transcribe(tmp_path)
+        result = await run_in_threadpool(transcribe, tmp_path)
     except ASRUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
         Path(tmp_path).unlink(missing_ok=True)
     result["slots"] = extract_slots(result["text"])

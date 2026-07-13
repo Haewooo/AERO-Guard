@@ -35,8 +35,17 @@ def _load_model():
 
 def transcribe(audio_path: str) -> dict:
     model = _load_model()
-    segments, info = model.transcribe(audio_path, language="en", vad_filter=True)
-    parts = [seg.text.strip() for seg in segments]
+    try:
+        segments, info = model.transcribe(
+            audio_path, language="en", vad_filter=True
+        )
+        parts = [seg.text.strip() for seg in segments]
+    except ASRUnavailableError:
+        raise
+    except Exception as exc:
+        # PyAV surfaces undecodable input as assorted FFmpeg error classes;
+        # normalize to ValueError so the API can answer 422.
+        raise ValueError("could not decode audio") from exc
     return {
         "text": " ".join(parts),
         "language": info.language,

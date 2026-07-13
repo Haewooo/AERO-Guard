@@ -16,7 +16,13 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir "mediapipe>=0.10"
+    && pip install --no-cache-dir "mediapipe>=0.10" "faster-whisper>=1.0"
+
+# Pre-fetch Whisper weights at build time so the deployed container never
+# needs network access (read-only fs + HF_HUB_OFFLINE below).
+ENV HF_HOME=/app/models
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')" \
+    && chmod -R a+rX /app/models
 
 COPY backend ./backend
 COPY frontend ./frontend
@@ -27,7 +33,8 @@ VOLUME ["/data"]
 ENV AEROGUARD_DB_PATH=/data/audit.db \
     AEROGUARD_HOST=0.0.0.0 \
     AEROGUARD_PORT=8000 \
-    MPLCONFIGDIR=/tmp/matplotlib
+    MPLCONFIGDIR=/tmp/matplotlib \
+    HF_HUB_OFFLINE=1
 
 USER aeroguard
 EXPOSE 8000

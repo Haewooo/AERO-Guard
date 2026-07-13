@@ -108,10 +108,16 @@ def test_audit_endpoints(client):
 
 
 def test_asr_unavailable_returns_503(client):
+    # garbage bytes: 503 without faster-whisper, 422 (undecodable) with it
     res = client.post(
         "/api/asr/transcribe", headers=HEADERS, content=b"RIFF0000WAVE"
     )
-    assert res.status_code in (503, 200)
+    assert res.status_code in (503, 422)
+
+
+def test_asr_empty_body_returns_422(client):
+    res = client.post("/api/asr/transcribe", headers=HEADERS, content=b"")
+    assert res.status_code == 422
 
 
 def test_security_headers(client):

@@ -305,6 +305,68 @@ function showInlineError(boxId, message) {
   box.appendChild(line);
 }
 
+/* ── voice input (on-prem whisper ASR) ─────────────────────────── */
+let micStream = null;
+let micRecorder = null;
+let micButton = null;
+
+function resetMic() {
+  if (micStream) {
+    micStream.getTracks().forEach((t) => t.stop());
+    micStream = null;
+  }
+  if (micButton) {
+    micButton.textContent = "● REC";
+    micButton.classList.remove("live");
+    micButton.disabled = false;
+    micButton = null;
+  }
+  micRecorder = null;
+}
+
+async function toggleMic(btn) {
+  if (micRecorder) {
+    if (micRecorder.state !== "inactive") micRecorder.stop();
+    return;
+  }
+  const target = $(btn.dataset.target);
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    showInlineError("comms-result", "MIC UNAVAILABLE — " + e.message);
+    return;
+  }
+  micButton = btn;
+  const chunks = [];
+  micRecorder = new MediaRecorder(micStream);
+  micRecorder.ondataavailable = (ev) => {
+    if (ev.data.size) chunks.push(ev.data);
+  };
+  micRecorder.onstop = async () => {
+    const blob = new Blob(chunks, { type: micRecorder.mimeType || "audio/webm" });
+    resetMic();
+    btn.textContent = "TRANSCRIBING…";
+    btn.disabled = true;
+    try {
+      const result = await apiRaw("/api/asr/transcribe", blob);
+      if (result.text) {
+        target.value = result.text;
+        target.dispatchEvent(new Event("input"));
+      } else {
+        showInlineError("comms-result", "NO SPEECH DETECTED — SPEAK CLOSER TO THE MIC");
+      }
+    } catch (e) {
+      showInlineError("comms-result", "ASR FAILED — " + e.message);
+    } finally {
+      btn.textContent = "● REC";
+      btn.disabled = false;
+    }
+  };
+  micRecorder.start();
+  btn.textContent = "■ STOP";
+  btn.classList.add("live");
+}
+
 /* ── comms verification ────────────────────────────────────────── */
 async function runVerify() {
   const instruction = $("instruction").value.trim();
@@ -961,6 +1023,9 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-simulate").addEventListener("click", runSimulate);
   $("btn-live").addEventListener("click", toggleLive);
   $("btn-audit-verify").addEventListener("click", verifyAudit);
+  for (const btn of document.querySelectorAll("button.mic")) {
+    btn.addEventListener("click", () => toggleMic(btn));
+  }
   $("emergency").addEventListener("click", () =>
     $("emergency").classList.add("hidden")
   );
