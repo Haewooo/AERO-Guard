@@ -6,6 +6,27 @@ to produce prioritized alerts.
 
 > **AI-Assisted**: all automated judgments are advisory. Final decision and action remain human.
 
+## Features
+
+- **Readback verification** — ICAO Doc 4444 slot extraction and instruction/readback
+  comparison, with microphone dictation through on-premises Whisper ASR
+- **Marshalling signal recognition** — live webcam pose capture (MediaPipe) classified
+  against the 11 ICAO Annex 2 hand signals, mirrored on the HMI in real time
+- **Risk fusion** — clearances cross-checked against runway occupancy state;
+  prioritized alerts pushed over WebSocket
+- **Tamper-evident audit** — SHA-256 hash-chained log of every mutating event
+
+## One-Click Launch (recommended)
+
+Download (clone or ZIP) with Docker Desktop installed, then double-click:
+
+- **macOS**: `AeroGuard.command`
+- **Windows**: `AeroGuard.bat`
+
+The launcher starts Docker if needed, builds/starts the stack, generates an
+API key on first run, and opens the HMI as a chromeless app window with the
+key already loaded. Stop the server anytime with `docker compose down`.
+
 ## Quick Start (local)
 
 ```bash
@@ -14,7 +35,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env        # set AEROGUARD_API_KEY (if unset: ephemeral key generated + logged warning)
 python -m uvicorn backend.main:app --port 8000
 # Browser: http://127.0.0.1:8000  (HMI console; enter API key at top right)
-pytest tests -q             # 102 tests
+pytest tests -q             # 111 tests
 ```
 
 VSCode: `.vscode/launch.json` (F5 debug) and `.vscode/tasks.json` (serve/test) included.
@@ -73,12 +94,11 @@ docker compose ps           # healthcheck: /healthz
 ### ICAO Annex 2 Appendix 1 — 11 marshalling signals
 - **Coordinate convention**: camera = pilot's point of view, marshaller faces the camera →
   marshaller's **right arm = image left**
-- **Turn left**: right arm (image left) held horizontal + left arm (image right) beckoning —
-  *a left/right inversion bug was found and fixed during this verification*
-- **Chocks inserted/removed**: both arms fully extended above head, wands converging inward = inserted /
-  spreading outward = removed — *previous hip-height implementation corrected to the ICAO above-head spec*
-- **Emergency stop vs stop**: ICAO distinguishes by motion speed — the PoC approximates this as static
-  crossed (stop) vs large-amplitude oscillating crossed (emergency_stop) (documented limitation)
+- **Turn left**: right arm (image left) held horizontal, left arm (image right) beckoning
+- **Chocks inserted/removed**: both arms fully extended above head, wands converging inward = inserted,
+  spreading outward = removed
+- **Emergency stop vs stop**: ICAO distinguishes by motion speed — approximated here as static
+  crossed (stop) vs large-amplitude oscillating crossed (emergency_stop); documented limitation
 - Regression coverage: 11 signals × 5 seeds round-trip classification + camera-distance (scale) invariance tests
 
 ## API Summary
@@ -93,4 +113,4 @@ docker compose ps           # healthcheck: /healthz
 | `POST /api/vision/simulate` | generate + classify a synthetic signal sequence (demo) |
 | `GET /api/alerts` / `POST /api/alerts/{id}/ack` | list/acknowledge alerts |
 | `GET /api/audit/verify` / `recent` | audit chain integrity / recent records |
-| `GET /healthz` `/readyz` · `WS /ws?key=` | health probes · live events |
+| `GET /healthz` `/readyz` · `WS /ws?api_key=` | health probes · live events |

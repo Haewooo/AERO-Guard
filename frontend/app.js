@@ -2,6 +2,13 @@
 
 /* ── state ─────────────────────────────────────────────────────── */
 let apiKey = localStorage.getItem("aeroguard_key") || "";
+// One-click launcher hands the key via URL fragment, which never
+// leaves the browser (not sent to the server, stripped from history).
+if (location.hash.startsWith("#key=")) {
+  apiKey = decodeURIComponent(location.hash.slice(5));
+  localStorage.setItem("aeroguard_key", apiKey);
+  history.replaceState(null, "", location.pathname);
+}
 let ws = null;
 let poseAnim = null;
 let alertsPrimed = false;
