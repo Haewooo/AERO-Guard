@@ -18,14 +18,19 @@ to produce prioritized alerts.
 
 ## One-Click Launch (recommended)
 
-Download (clone or ZIP) with Docker Desktop installed, then double-click:
+Prerequisite: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
-- **macOS**: `AeroGuard.command`
-- **Windows**: `AeroGuard.bat`
+1. Get the code — either `git clone https://github.com/Haewooo/AERO-Guard.git`
+   or **Code → Download ZIP** on GitHub and unzip
+2. Double-click **`AeroGuard.command`** (macOS) or **`AeroGuard.bat`** (Windows)
 
 The launcher starts Docker if needed, builds/starts the stack, generates an
 API key on first run, and opens the HMI as a chromeless app window with the
-key already loaded. Stop the server anytime with `docker compose down`.
+key already loaded. The first run builds the image (several minutes); later
+runs open in seconds. Stop the server anytime with `docker compose down`.
+
+> macOS blocks double-clicking scripts from an unidentified developer:
+> right-click `AeroGuard.command` → **Open** (needed once).
 
 ## Quick Start (local)
 
