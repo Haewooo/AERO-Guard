@@ -120,6 +120,22 @@ def test_asr_empty_body_returns_422(client):
     assert res.status_code == 422
 
 
+def test_tts_speak(client):
+    # 200 with piper-tts + voice model present, 503 without
+    res = client.post(
+        "/api/tts/speak", headers=HEADERS, json={"text": "Warning. Test."}
+    )
+    assert res.status_code in (200, 503)
+    if res.status_code == 200:
+        assert res.headers["content-type"] == "audio/wav"
+        assert res.content[:4] == b"RIFF"
+
+
+def test_tts_empty_text_returns_422(client):
+    res = client.post("/api/tts/speak", headers=HEADERS, json={"text": ""})
+    assert res.status_code == 422
+
+
 def test_security_headers(client):
     res = client.get("/healthz")
     assert res.headers["X-Content-Type-Options"] == "nosniff"

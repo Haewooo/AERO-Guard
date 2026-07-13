@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from ..audio.slots import extract_slots
@@ -37,6 +37,10 @@ class SimulateRequest(BaseModel):
 
 class AckRequest(BaseModel):
     operator: str = Field(default="console", max_length=100)
+
+
+class TTSRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
 
 
 # ── communications channel ─────────────────────────────────────────
@@ -200,6 +204,20 @@ async def transcribe_audio(request: Request) -> dict[str, Any]:
         "text": result["text"], "duration": result["duration"],
     })
     return result
+
+
+# ── optional TTS (annunciator voice) ───────────────────────────────
+@router.post("/tts/speak")
+async def tts_speak(req: TTSRequest) -> Response:
+    from fastapi.concurrency import run_in_threadpool
+
+    from ..audio.tts import TTSUnavailableError, synthesize
+
+    try:
+        wav = await run_in_threadpool(synthesize, req.text)
+    except TTSUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(content=wav, media_type="audio/wav")
 
 
 # ── audit / governance ─────────────────────────────────────────────

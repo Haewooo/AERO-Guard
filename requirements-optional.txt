@@ -8,3 +8,7 @@ faster-whisper>=1.0
 # Installed in the Docker image by default. opencv comes as a mediapipe
 # dependency. NOTE: requires Python <= 3.12 (no 3.13 wheels yet).
 mediapipe>=0.10
+# Neural TTS for annunciator voice callouts (POST /api/tts/speak).
+# Installed in the Docker image by default. The en_US-amy-medium voice is
+# committed in-repo under models/ (works offline for Docker and local runs).
+piper-tts>=1.4

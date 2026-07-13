@@ -36,11 +36,23 @@
 
   <!-- critical emergency takeover -->
   <div id="emergency" class="hidden">
-    <div class="em-frame"></div>
-    <div class="em-inner">
+    <div class="em-bar em-bar-top"></div>
+    <div class="em-bar em-bar-bottom"></div>
+    <div class="em-ring"></div>
+    <div class="em-scan"></div>
+    <div class="em-panel">
+      <div class="em-head">
+        <span>AEROGUARD // GROUND SAFETY</span>
+        <span id="em-code">EVT ---</span>
+      </div>
       <div class="em-title">EMERGENCY</div>
       <div id="em-msg"></div>
-      <div class="em-sub">CRITICAL ALERT — IMMEDIATE ATTENTION REQUIRED · CLICK TO DISMISS</div>
+      <div class="em-meta">
+        <span id="em-time">--:--:--Z</span>
+        <span>SEV CRITICAL</span>
+        <span>MODE TAKEOVER</span>
+      </div>
+      <div class="em-sub">IMMEDIATE ATTENTION REQUIRED · CLICK TO ACKNOWLEDGE</div>
     </div>
   </div>
 
@@ -58,6 +70,7 @@
       <span class="meta-block">TIME<b id="clock">--:--:--</b></span>
     </div>
     <div class="header-right">
+      <button id="btn-audio" title="Toggle aural alerts (tones + voice callouts)">AUDIO ON</button>
       <span id="ws-status" class="ws-badge off">LINK OFFLINE</span>
       <input id="api-key" type="password" placeholder="AUTH KEY" autocomplete="off">
       <button id="btn-connect">Connect</button>

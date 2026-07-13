@@ -52,6 +52,10 @@ def normalize(text: str) -> str:
             tokens.append(PHONETIC[tok])
         elif tok in DIGIT_WORDS:
             tokens.append(DIGIT_WORDS[tok])
+        elif len(tok) == 1 and tok.isalpha():
+            # bare letters are taxiway/phonetic designators in ATC text
+            # ("via A" typed instead of "via alpha") — canonical uppercase
+            tokens.append(tok.upper())
         else:
             tokens.append(tok)
 

@@ -16,11 +16,14 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir "mediapipe>=0.10" "faster-whisper>=1.0"
+    && pip install --no-cache-dir "mediapipe>=0.10" "faster-whisper>=1.0" "piper-tts>=1.4"
 
 # Pre-fetch Whisper weights at build time so the deployed container never
-# needs network access (read-only fs + HF_HUB_OFFLINE below).
+# needs network access (read-only fs + HF_HUB_OFFLINE below). The piper TTS
+# voice is committed in-repo (models/) because the HF large-file CDN rejects
+# unauthenticated downloads intermittently — COPY keeps the build air-gap safe.
 ENV HF_HOME=/app/models
+COPY models/en_US-amy-medium.onnx models/en_US-amy-medium.onnx.json /app/models/
 RUN python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')" \
     && chmod -R a+rX /app/models
 

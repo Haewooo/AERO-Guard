@@ -14,20 +14,27 @@ to produce prioritized alerts.
   against the 11 ICAO Annex 2 hand signals, mirrored on the HMI in real time
 - **Risk fusion** — clearances cross-checked against runway occupancy state;
   prioritized alerts pushed over WebSocket
+- **Aural annunciator** — cockpit-style Master Warning / Master Caution tones
+  (Web Audio synthesis, no assets) with machine-voice callouts: on-prem neural
+  TTS (piper) post-processed through a Web Audio comb filter for the classic
+  processed-adjutant character; AUDIO toggle in the header
 - **Tamper-evident audit** — SHA-256 hash-chained log of every mutating event
 
 ## One-Click Launch (recommended)
 
-Prerequisite: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+No prerequisites — the launcher installs Docker Desktop automatically if it
+is missing.
 
 1. Get the code — either `git clone https://github.com/Haewooo/AERO-Guard.git`
    or **Code → Download ZIP** on GitHub and unzip
 2. Double-click **`AeroGuard.command`** (macOS) or **`AeroGuard.bat`** (Windows)
 
-The launcher starts Docker if needed, builds/starts the stack, generates an
-API key on first run, and opens the HMI as a chromeless app window with the
-key already loaded. The first run builds the image (several minutes); later
-runs open in seconds. Stop the server anytime with `docker compose down`.
+The launcher downloads/installs Docker Desktop if absent (one time, ~700 MB;
+accept Docker's service agreement when its window appears), starts Docker,
+builds/starts the stack, generates an API key on first run, and opens the HMI
+as a chromeless app window with the key already loaded. The first run builds
+the image (several minutes); later runs open in seconds. Stop the server
+anytime with `docker compose down`.
 
 > macOS blocks double-clicking scripts from an unidentified developer:
 > right-click `AeroGuard.command` → **Open** (needed once).
@@ -67,10 +74,11 @@ docker compose ps           # healthcheck: /healthz
                                         every mutating event → SHA-256 hash-chain audit log (SQLite WAL)
 ```
 
-- **Offline-first**: no CDN or external calls. Heavy ASR/vision dependencies are optional
-  (`requirements-optional.txt`); when absent the API responds explicitly with 503.
-  The Docker image ships both: mediapipe pose models and Whisper "base" weights are
-  baked in at build time and the container runs with `HF_HUB_OFFLINE=1` (air-gap safe).
+- **Offline-first**: no CDN or external calls. Heavy ASR/vision/TTS dependencies are
+  optional (`requirements-optional.txt`); when absent the API responds explicitly with
+  503. The Docker image ships all three: mediapipe pose models and Whisper "base"
+  weights are baked in at build time, the piper TTS voice is committed in-repo
+  (`models/`), and the container runs with `HF_HUB_OFFLINE=1` (air-gap safe).
 - **Scaling path**: the rule-based classifier shares the `window_features` interface with the
   planned 1D-CNN/Bi-LSTM upgrade. RiskEngine state is single-node by design; for multi-instance
   deployment swap in a shared store (e.g. Redis) behind the same interface (see code comments).
@@ -87,14 +95,21 @@ docker compose ps           # healthcheck: /healthz
 
 ## Standards Compliance (verified)
 
-### ICAO Doc 4444 (PANS-ATM) — readback/hearback
-- **§4.5.7.5.1 mandatory readback items** implemented as slots: runway, takeoff/landing/crossing/line-up
-  clearance, hold short, taxi route (taxi_to/route), altitude/FL, heading, frequency, squawk,
-  **QNH/altimeter setting (qnh)**
+### ICAO Doc 4444 (PANS-ATM), Doc 9870, FAA JO 7110.65 — readback/hearback
+- **Doc 4444 §4.5.7.5.1 mandatory readback items** implemented as slots: runway-in-use,
+  takeoff/landing/crossing/line-up clearances, hold short, taxi route (taxi_to/route), altitude/FL,
+  heading, **speed instructions**, frequency, SSR code (squawk), QNH/altimeter setting
+- **Doc 4444 §4.5.7.5.2**: a readback must include the aircraft callsign — an omitted callsign is
+  flagged (MEDIUM), a wrong callsign in the readback is a hearback failure (HIGH)
+- **Doc 9870 (Manual on the Prevention of Runway Incursions)**: readback/hearback errors on runway
+  instructions are a leading incursion causal factor — runway / runway-entry clearance / hold-short
+  **mismatch = CRITICAL**, and their **omission from the readback = HIGH**
+- **FAA JO 7110.65 / AIM 4-4-7 alignment**: wrong altimeter (QNH) readback graded HIGH
+  (level-bust precursor, grades with altitude); any value in the readback the instruction never
+  contained is surfaced as UNEXPECTED_VALUE (MEDIUM) even when no slot models it
 - **Standard phraseology normalization**: ICAO phonetic alphabet (alpha→A), niner/fife/tree/fower,
-  thousand/hundred multipliers, decimal frequency joining — digits and spoken words judged equivalent
-- **Severity grading**: runway/clearance/hold-short mismatch = CRITICAL (runway-incursion precursor),
-  hold-short readback omission = HIGH
+  thousand/hundred multipliers, decimal frequency joining, continuous readback forms
+  (holding short / crossing / lining up) — digits and spoken words judged equivalent
 
 ### ICAO Annex 2 Appendix 1 — 11 marshalling signals
 - **Coordinate convention**: camera = pilot's point of view, marshaller faces the camera →
@@ -112,6 +127,7 @@ docker compose ps           # healthcheck: /healthz
 |---|---|
 | `POST /api/comms/verify` | instruction/readback text → slot comparison + alerts |
 | `POST /api/asr/transcribe` | speech → text + slot extraction (whisper "base" baked into Docker image; HMI mic buttons) |
+| `POST /api/tts/speak` | text → WAV voice callout (piper neural TTS, voice baked into Docker image) |
 | `GET`/`POST /api/runway/occupancy` | read / set / clear runway occupancy |
 | `POST /api/vision/pose` | webcam frame (JPEG body) → pose keypoints (mediapipe, bundled in Docker image) |
 | `POST /api/vision/classify` | keypoint window → signal classification |

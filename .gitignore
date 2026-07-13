@@ -6,4 +6,8 @@ data/*.db
 data/*.db-*
 .pytest_cache/
 .DS_Store
-models/
+models/*
+# piper TTS voice is committed: HF CDN blocks unauthenticated large-file
+# downloads intermittently, and in-repo files keep the build air-gap safe
+!models/en_US-amy-medium.onnx
+!models/en_US-amy-medium.onnx.json

@@ -1,26 +1,50 @@
 @echo off
 rem AeroGuard one-click launcher (Windows). Double-click:
-rem starts Docker if needed, brings the stack up, then opens the HMI
-rem in a chromeless app window with the API key pre-loaded.
+rem installs Docker Desktop if missing, starts it if needed, brings the
+rem stack up, then opens the HMI in a chromeless app window with the
+rem API key pre-loaded.
 setlocal
 cd /d "%~dp0"
 
+rem Docker Desktop bundles its CLI here; covers a just-installed copy
+rem whose PATH entry is not visible to this session yet.
+set "PATH=%PATH%;%ProgramFiles%\Docker\Docker\resources\bin"
+
 where docker >nul 2>nul
+if not errorlevel 1 goto docker_present
+if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto docker_present
+
+echo Docker Desktop not found - installing it now (one time, large download)...
+winget install -e --id Docker.DockerDesktop --accept-source-agreements --accept-package-agreements
+if not errorlevel 1 goto docker_present
+echo winget unavailable - downloading the installer directly...
+curl -L -o "%TEMP%\DockerDesktopInstaller.exe" "https://desktop.docker.com/win/main/amd64/Docker%%20Desktop%%20Installer.exe"
 if errorlevel 1 (
-  echo Docker Desktop is not installed. Get it from docker.com, then run this again.
+  echo Could not download Docker Desktop. Install it from docker.com, then run this again.
   pause
   exit /b 1
 )
+"%TEMP%\DockerDesktopInstaller.exe" install --quiet --accept-license
+if errorlevel 1 (
+  echo Docker Desktop installation failed. Install it from docker.com, then run this again.
+  pause
+  exit /b 1
+)
+del "%TEMP%\DockerDesktopInstaller.exe" >nul 2>nul
 
+:docker_present
 docker info >nul 2>nul
 if not errorlevel 1 goto docker_ready
 echo Starting Docker Desktop...
+echo (first run only: accept the service agreement in the Docker window -
+echo  this launcher continues automatically once Docker is ready)
 start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe"
-for /l %%i in (1,1,60) do (
+for /l %%i in (1,1,150) do (
   timeout /t 2 /nobreak >nul
   docker info >nul 2>nul && goto docker_ready
 )
-echo Docker did not become ready. Start Docker Desktop manually, then run this again.
+echo Docker did not become ready. If Docker Desktop was just installed,
+echo sign out and back in (or reboot), then run this again.
 pause
 exit /b 1
 

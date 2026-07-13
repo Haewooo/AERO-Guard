@@ -12,7 +12,7 @@ if (location.hash.startsWith("#key=")) {
 let ws = null;
 let poseAnim = null;
 let alertsPrimed = false;
-const seenCritical = new Set();
+const seenAlerts = new Set();
 
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -494,6 +494,352 @@ function fmt(v) {
   return String(v);
 }
 
+/* ── audio annunciator ─────────────────────────────────────────── */
+// Aural alerting modeled on cockpit annunciator practice: CRITICAL maps
+// to a Master Warning-style alternating klaxon plus a spoken "WARNING"
+// callout, HIGH to a Master Caution-style dual chime plus "CAUTION",
+// lower severities to a short attention tone only. All tones are
+// synthesized with the Web Audio API (no assets, CSP-safe, offline);
+// voice uses the browser's local speech engine.
+let audioEnabled = localStorage.getItem("aeroguard_audio") !== "off";
+let audioCtx = null;
+
+function ensureAudioCtx() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  if (!audioCtx) audioCtx = new Ctx();
+  if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+  return audioCtx;
+}
+
+// Autoplay policy: an AudioContext only produces sound after a user
+// gesture, so unlock on the first interaction of the session.
+function unlockAudio() {
+  ensureAudioCtx();
+  if (window.speechSynthesis) speechSynthesis.getVoices(); // warm voice list
+}
+
+// Rising siren sweep ("whoop") — the cockpit master-warning
+// attention-getter. Sawtooth through a lowpass keeps it urgent
+// without the harshness of a raw square wave.
+function whoop(ctx, at, dur, peak) {
+  const osc = ctx.createOscillator();
+  const lp = ctx.createBiquadFilter();
+  const g = ctx.createGain();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(480, at);
+  osc.frequency.exponentialRampToValueAtTime(1150, at + dur);
+  lp.type = "lowpass";
+  lp.frequency.value = 2600;
+  // attack/release ramps avoid audible clicks at burst edges
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.exponentialRampToValueAtTime(peak, at + 0.015);
+  g.gain.setValueAtTime(peak, at + dur - 0.05);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  osc.connect(lp).connect(g).connect(ctx.destination);
+  osc.start(at);
+  osc.stop(at + dur + 0.02);
+}
+
+// Bell-like chime: fundamental plus a quieter octave harmonic with a
+// natural decay — master-caution character rather than a raw beep.
+function chime(ctx, at, freq, dur, peak) {
+  for (const [mult, amp] of [[1, 1], [2, 0.35]]) {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq * mult, at);
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(peak * amp, at + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(at);
+    osc.stop(at + dur + 0.02);
+  }
+}
+
+// Plays the tone pattern for a severity; returns its length in ms so
+// the voice callout can be sequenced after it.
+function playTone(kind) {
+  if (!audioEnabled) return 0;
+  const ctx = ensureAudioCtx();
+  if (!ctx || ctx.state !== "running") return 0;
+  let at = ctx.currentTime + 0.02;
+  if (kind === "CRITICAL") {
+    for (let i = 0; i < 3; i++) {
+      whoop(ctx, at, 0.34, 0.22);
+      at += 0.4;
+    }
+  } else if (kind === "HIGH") {
+    chime(ctx, at, 880, 0.25, 0.18);
+    chime(ctx, at + 0.28, 660, 0.35, 0.18);
+    at += 0.63;
+  } else {
+    chime(ctx, at, 1000, 0.14, 0.14);
+    at += 0.14;
+  }
+  return Math.max(0, (at - ctx.currentTime) * 1000);
+}
+
+let calloutVoice = null;
+function pickCalloutVoice() {
+  if (!window.speechSynthesis) return null;
+  const english = (speechSynthesis.getVoices() || []).filter(
+    (v) => v.lang && v.lang.startsWith("en")
+  );
+  if (!english.length) return null;
+  // Bright female en voices for the young, even machine register.
+  // Network voices sound best but fail silently offline, so they are
+  // only considered while the browser reports connectivity.
+  const prefer = navigator.onLine
+    ? ["Google US English", "Samantha", "Karen", "Zira"]
+    : ["Samantha", "Karen", "Zira"];
+  const locals = english.filter((v) => v.localService);
+  const pool = navigator.onLine || !locals.length ? english : locals;
+  for (const name of prefer) {
+    const v = pool.find((v) => v.name.includes(name));
+    if (v) return v;
+  }
+  return pool[0];
+}
+if (window.speechSynthesis) {
+  speechSynthesis.onvoiceschanged = () => { calloutVoice = pickCalloutVoice(); };
+}
+
+// Radiotelephony digit reading: numbers are spoken digit by digit
+// ("runway 36" → "runway three six", "KAF502" → "KAF five zero two"),
+// decimals as "decimal", 9 as "niner" (ICAO Doc 9432 style).
+const DIGIT_WORDS = [
+  "zero", "one", "two", "three", "four",
+  "five", "six", "seven", "eight", "niner",
+];
+
+function speechText(message) {
+  return message
+    .replace(/[—–|]/g, ", ")
+    .replace(/([A-Za-z])(\d)/g, "$1 $2")
+    .replace(/(\d)([A-Za-z])/g, "$1 $2")
+    .replace(/\d+(?:\.\d+)?/g, (num) =>
+      num
+        .split("")
+        .map((ch) => (ch === "." ? "decimal" : DIGIT_WORDS[Number(ch)]))
+        .join(" ")
+    )
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.])/g, "$1")
+    .trim();
+}
+
+/* Radio-comms layer under voice callouts: a key-up squelch click and a
+   faint band-passed static bed while speaking. The speech engine's
+   output cannot be routed through Web Audio, so the comms character is
+   layered around it instead. */
+function noiseSource(ctx) {
+  const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  return src;
+}
+
+function squelchClick() {
+  const ctx = ensureAudioCtx();
+  if (!ctx || ctx.state !== "running") return;
+  const src = noiseSource(ctx);
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.value = 2400;
+  bp.Q.value = 1.2;
+  const g = ctx.createGain();
+  const t = ctx.currentTime;
+  g.gain.setValueAtTime(0.06, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+  src.connect(bp).connect(g).connect(ctx.destination);
+  src.start(t);
+  src.stop(t + 0.08);
+}
+
+let staticBed = null;
+function startStatic() {
+  const ctx = ensureAudioCtx();
+  if (!ctx || ctx.state !== "running") return;
+  stopStatic();
+  const src = noiseSource(ctx);
+  src.loop = true;
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.value = 1800;
+  bp.Q.value = 0.5;
+  const g = ctx.createGain();
+  g.gain.value = 0.012;
+  src.connect(bp).connect(g).connect(ctx.destination);
+  src.start();
+  staticBed = src;
+}
+function stopStatic() {
+  if (!staticBed) return;
+  try { staticBed.stop(); } catch (_) { /* already stopped */ }
+  staticBed = null;
+}
+
+/* Voice callouts: WAV from the on-prem neural TTS endpoint, played
+   through a static comb filter for the annunciator's processed
+   machine-voice character. Falls back to the browser speech engine
+   when the endpoint is unavailable. */
+const speechQueue = [];
+let speechActive = false;
+let speechSource = null;
+// bumped on preempt: a synthesis fetch that was in flight when stopSpeech()
+// ran must not play when it resolves (it would overlap the new callout)
+let speechGen = 0;
+
+function stopSpeech() {
+  speechGen += 1;
+  speechQueue.length = 0;
+  if (speechSource) {
+    speechSource.onended = null;
+    try { speechSource.stop(); } catch (_) { /* already stopped */ }
+    speechSource = null;
+  }
+  speechActive = false;
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  stopStatic();
+}
+
+function speak(text, preempt) {
+  if (!audioEnabled) return;
+  if (preempt) stopSpeech(); // CRITICAL overrides queued speech
+  speechQueue.push(text);
+  pumpSpeech();
+}
+
+async function pumpSpeech() {
+  if (speechActive || !speechQueue.length) return;
+  const text = speechQueue.shift();
+  const gen = speechGen;
+  speechActive = true;
+  const ctx = ensureAudioCtx();
+  try {
+    if (!ctx || ctx.state !== "running") throw new Error("audio locked");
+    const res = await fetch("/api/tts/speak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buffer = await ctx.decodeAudioData(await res.arrayBuffer());
+    if (gen !== speechGen) return; // preempted while synthesizing — drop
+    playProcessedVoice(ctx, buffer);
+  } catch (_) {
+    if (gen !== speechGen) return;
+    speakFallback(text);
+  }
+}
+
+function speechDone() {
+  speechSource = null;
+  speechActive = false;
+  stopStatic();
+  squelchClick(); // radio key-off tail
+  pumpSpeech();
+}
+
+function playProcessedVoice(ctx, buffer) {
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  // static comb filter (fixed short delay + feedback) for the metallic
+  // machine-voice ring. No LFO: a modulated delay doppler-bends the pitch,
+  // which is heard as the voice speeding up and slowing down.
+  const delay = ctx.createDelay(0.05);
+  delay.delayTime.value = 0.0052;
+  const feedback = ctx.createGain();
+  feedback.gain.value = 0.35;
+  delay.connect(feedback).connect(delay);
+  const dry = ctx.createGain();
+  const wet = ctx.createGain();
+  dry.gain.value = 0.7;
+  wet.gain.value = 0.45;
+  src.connect(dry).connect(ctx.destination);
+  src.connect(delay);
+  delay.connect(wet).connect(ctx.destination);
+  src.start();
+  squelchClick();
+  startStatic();
+  speechSource = src;
+  src.onended = speechDone;
+}
+
+function speakFallback(text) {
+  if (!window.speechSynthesis) {
+    speechActive = false;
+    pumpSpeech();
+    return;
+  }
+  if (!calloutVoice) calloutVoice = pickCalloutVoice();
+  const u = new SpeechSynthesisUtterance(text);
+  if (calloutVoice) u.voice = calloutVoice;
+  u.rate = 0.88;
+  u.pitch = 1.0;
+  u.volume = 1;
+  u.onstart = () => {
+    squelchClick();
+    startStatic();
+  };
+  u.onend = speechDone;
+  u.onerror = () => {
+    speechActive = false;
+    stopStatic();
+    pumpSpeech();
+  };
+  speechSynthesis.speak(u);
+}
+
+/* Annunciate a batch of new alerts as one event: a single tone for the
+   highest severity present, then the callouts queued in priority order.
+   Per-alert tones/preempts overlap when several alerts land together. */
+const SEV_RANK = { CRITICAL: 0, HIGH: 1 };
+
+function annunciate(fresh) {
+  if (!audioEnabled || !fresh.length) return;
+  const ranked = fresh
+    .slice()
+    .sort((a, b) => (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9));
+  const top = ranked[0].severity;
+  const kind = top === "CRITICAL" || top === "HIGH" ? top : "ATTENTION";
+  if (top === "CRITICAL") stopSpeech(); // master warning overrides ongoing speech
+  const lead = playTone(kind);
+  if (kind === "ATTENTION") return;
+  const callouts = ranked
+    .filter((a) => a.severity === "CRITICAL" || a.severity === "HIGH")
+    .map(
+      (a) =>
+        (a.severity === "CRITICAL" ? "Warning. Warning. " : "Caution. ") +
+        speechText(a.message)
+    );
+  const gen = speechGen;
+  setTimeout(() => {
+    if (gen !== speechGen) return; // a newer master warning took over
+    for (const text of callouts) speak(text, false);
+  }, lead + 120);
+}
+
+let onlineAnnounced = false;
+function announceOnline() {
+  if (onlineAnnounced) return;
+  onlineAnnounced = true;
+  speak("AeroGuard online. All systems nominal.", false);
+}
+
+function setAudioEnabled(on) {
+  audioEnabled = on;
+  localStorage.setItem("aeroguard_audio", on ? "on" : "off");
+  const btn = $("btn-audio");
+  btn.textContent = on ? "AUDIO ON" : "AUDIO OFF";
+  btn.classList.toggle("audio-off", !on);
+  if (!on) stopSpeech();
+}
+
 /* ── alerts + emergency takeover ───────────────────────────────── */
 async function refreshAlerts() {
   try {
@@ -505,36 +851,37 @@ async function refreshAlerts() {
 }
 
 let emTimer = null;
+let emSeq = 0;
 function showEmergency(message) {
   const em = $("emergency");
   $("em-msg").textContent = message;
+  $("em-time").textContent = new Date().toISOString().slice(11, 19) + "Z";
+  $("em-code").textContent = "EVT " + String(++emSeq).padStart(3, "0");
   em.classList.remove("hidden");
   clearTimeout(emTimer);
   emTimer = setTimeout(() => em.classList.add("hidden"), 5000);
 }
 
-function maybeEmergency(alerts) {
+function processNewAlerts(alerts) {
   if (!alertsPrimed) {
-    // don't replay takeovers for alerts that predate this session
-    for (const a of alerts) {
-      if (a.severity === "CRITICAL") seenCritical.add(a.id);
-    }
+    // don't replay takeovers or audio for alerts that predate this session
+    for (const a of alerts) seenAlerts.add(a.id);
     alertsPrimed = true;
     return;
   }
+  const fresh = [];
   for (const a of alerts) {
-    if (a.severity !== "CRITICAL") continue;
-    if (!a.acknowledged && !seenCritical.has(a.id)) {
-      seenCritical.add(a.id);
-      showEmergency(a.message);
-    } else {
-      seenCritical.add(a.id);
-    }
+    if (seenAlerts.has(a.id)) continue;
+    seenAlerts.add(a.id);
+    if (a.acknowledged) continue;
+    fresh.push(a);
+    if (a.severity === "CRITICAL") showEmergency(a.message);
   }
+  annunciate(fresh);
 }
 
 function renderAlerts(alerts) {
-  maybeEmergency(alerts);
+  processNewAlerts(alerts);
   const list = $("alert-list");
   list.replaceChildren();
   if (!alerts.length) {
@@ -1023,7 +1370,17 @@ document.addEventListener("DOMContentLoaded", () => {
   tickClock();
   setInterval(tickClock, 1000);
   $("api-key").value = apiKey;
-  $("btn-connect").addEventListener("click", connectAll);
+  setAudioEnabled(audioEnabled);
+  document.addEventListener("pointerdown", unlockAudio, { once: true });
+  document.addEventListener("keydown", unlockAudio, { once: true });
+  $("btn-audio").addEventListener("click", () => {
+    setAudioEnabled(!audioEnabled);
+    if (audioEnabled) playTone("ATTENTION"); // audible confirmation
+  });
+  $("btn-connect").addEventListener("click", () => {
+    connectAll();
+    announceOnline();
+  });
   $("btn-verify").addEventListener("click", runVerify);
   $("btn-refresh-alerts").addEventListener("click", refreshAlerts);
   $("btn-occupancy").addEventListener("click", setOccupancy);
