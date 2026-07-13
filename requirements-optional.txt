@@ -1,0 +1,7 @@
+# Optional heavy dependencies — install only when needed.
+# ASR (real speech-to-text). Works fully offline after first model download.
+faster-whisper>=1.0
+# Webcam pose capture demo (scripts/webcam_demo.py).
+# NOTE: check mediapipe Python 3.13 wheel availability for your platform.
+mediapipe>=0.10
+opencv-python>=4.9

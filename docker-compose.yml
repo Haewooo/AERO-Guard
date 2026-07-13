@@ -1,0 +1,31 @@
+services:
+  aeroguard:
+    build: .
+    image: aeroguard:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Set a strong key in production: openssl rand -base64 32
+      AEROGUARD_API_KEY: ${AEROGUARD_API_KEY:?set AEROGUARD_API_KEY in .env}
+      AEROGUARD_DB_PATH: /data/audit.db
+    volumes:
+      - audit-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status == 200 else 1)"
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+volumes:
+  audit-data:

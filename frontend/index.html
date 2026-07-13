@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AEROGUARD — GROUND SAFETY TACTICAL CONSOLE</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- 3D wireframe backdrop -->
+  <canvas id="bg3d"></canvas>
+
+  <!-- boot sequence overlay -->
+  <div id="boot">
+    <div class="boot-hex"></div>
+    <div class="boot-logo">AEROGUARD</div>
+    <pre id="boot-log"></pre>
+  </div>
+
+  <!-- MAGI deliberation overlay -->
+  <div id="magi" class="hidden">
+    <div class="magi-title">READBACK DELIBERATION SYSTEM</div>
+    <div class="magi-grid">
+      <div class="magi-node" id="magi-1">
+        <span>MAGI · 01</span><b>SLOT EXTRACT</b><i class="magi-state">STANDBY</i>
+      </div>
+      <div class="magi-node" id="magi-2">
+        <span>MAGI · 02</span><b>CROSS CHECK</b><i class="magi-state">STANDBY</i>
+      </div>
+      <div class="magi-node" id="magi-3">
+        <span>MAGI · 03</span><b>RISK FUSION</b><i class="magi-state">STANDBY</i>
+      </div>
+    </div>
+    <div id="magi-verdict"></div>
+  </div>
+
+  <!-- critical emergency takeover -->
+  <div id="emergency" class="hidden">
+    <div class="em-frame"></div>
+    <div class="em-inner">
+      <div class="em-title">EMERGENCY</div>
+      <div id="em-msg"></div>
+      <div class="em-sub">CRITICAL ALERT — IMMEDIATE ATTENTION REQUIRED · CLICK TO DISMISS</div>
+    </div>
+  </div>
+
+  <header>
+    <div class="brand">
+      <div class="brand-mark">AG</div>
+      <div class="brand-text">
+        <h1>AEROGUARD</h1>
+        <small>GROUND SAFETY TACTICAL CONSOLE</small>
+      </div>
+    </div>
+    <div class="sys-meta">
+      <span class="meta-block">ONPREM<b>AIRGAP</b></span>
+      <span class="meta-block">MODE<b>PROTO-1</b></span>
+      <span class="meta-block">TIME<b id="clock">--:--:--</b></span>
+    </div>
+    <div class="header-right">
+      <span id="ws-status" class="ws-badge off">LINK OFFLINE</span>
+      <input id="api-key" type="password" placeholder="AUTH KEY" autocomplete="off">
+      <button id="btn-connect">Connect</button>
+    </div>
+  </header>
+  <div class="hazard"></div>
+
+  <main>
+    <!-- ── readback verification ──────────────────── -->
+    <section class="panel" id="panel-comms">
+      <h2><span class="tag">SYS:01</span> READBACK VERIFICATION <span class="h2-en">ATC COMMS</span></h2>
+      <label for="instruction">CONTROLLER INSTRUCTION</label>
+      <textarea id="instruction" rows="2"
+        placeholder="KAF502, taxi to runway 36 via alpha, hold short of runway 36"></textarea>
+      <label for="readback">PILOT READBACK</label>
+      <textarea id="readback" rows="2"
+        placeholder="Taxi to runway 36 via alpha, hold short of runway 36, KAF502"></textarea>
+      <div class="row">
+        <button id="btn-verify" class="primary">Verify</button>
+      </div>
+      <div class="scenarios">
+        <span class="hint">SCENARIO ▸</span>
+        <button class="scenario" data-scenario="ok">Correct readback</button>
+        <button class="scenario" data-scenario="rwy">Runway mismatch</button>
+        <button class="scenario" data-scenario="alt">Altitude mismatch</button>
+        <button class="scenario" data-scenario="hold">Hold-short omitted</button>
+        <button class="scenario" data-scenario="incursion">Takeoff on occupied RWY</button>
+      </div>
+      <div id="comms-result" class="result hidden"></div>
+    </section>
+
+    <!-- ── alerts ─────────────────────────────────── -->
+    <section class="panel" id="panel-alerts">
+      <h2><span class="tag">SYS:02</span> ALERTS <span class="h2-en">PRIORITY ORDER</span>
+        <button id="btn-refresh-alerts" class="mini">Reload</button></h2>
+      <ul id="alert-list" class="alert-list"></ul>
+    </section>
+
+    <!-- ── right: occupancy + marshalling + audit ─── -->
+    <section class="panel" id="panel-side">
+      <h2><span class="tag">SYS:03</span> RUNWAY OCCUPANCY <span class="h2-en">CONTEXT</span></h2>
+      <div class="row">
+        <input id="occ-runway" placeholder="RWY (e.g. 36)" maxlength="4">
+        <input id="occ-callsign" placeholder="Callsign (empty = clear)" maxlength="10">
+        <button id="btn-occupancy">Set</button>
+      </div>
+      <div id="occupancy-view" class="occupancy"></div>
+
+      <h2 class="mt"><span class="tag">SYS:04</span> MARSHALLING SIGNALS <span class="h2-en">3D READOUT</span></h2>
+      <div class="row">
+        <select id="signal-select"></select>
+        <button id="btn-simulate" class="primary">Simulate</button>
+      </div>
+      <canvas id="pose-canvas" width="300" height="270"></canvas>
+      <div id="signal-result" class="result hidden"></div>
+
+      <h2 class="mt"><span class="tag">SYS:05</span> AUDIT LOG <span class="h2-en">HASH CHAIN</span></h2>
+      <div class="row">
+        <button id="btn-audit-verify">Verify chain</button>
+        <span id="audit-status"></span>
+      </div>
+    </section>
+  </main>
+
+  <div class="hazard"></div>
+  <footer>
+    <span>AI-ASSISTED — ALL AUTOMATED JUDGMENTS ARE ADVISORY. FINAL DECISION AND ACTION REMAIN HUMAN.</span>
+    <span>ON-PREMISES · OFFLINE · NO EXTERNAL TRANSMISSION</span>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
