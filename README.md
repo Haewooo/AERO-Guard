@@ -111,6 +111,13 @@ docker compose ps           # healthcheck: /healthz
   thousand/hundred multipliers, decimal frequency joining, continuous readback forms
   (holding short / crossing / lining up) — digits and spoken words judged equivalent
 
+### MIL-STD-1472 / FAA AC 25.1322 — HMI color discipline
+- The default HMI is a concept ("NERV") skin; the **HMI button in the header switches one-click**
+  to a MIL-STD-1472-aligned operational skin (persisted per operator)
+- Operational skin: neutral gray chrome, **red reserved for warnings (CRITICAL)**, **amber for
+  cautions (HIGH)**, white for advisories; decorative animation (scanlines, reticle, marching
+  stripes, flicker) removed — flashing limited to the master-warning attention-getters
+
 ### ICAO Annex 2 Appendix 1 — 11 marshalling signals
 - **Coordinate convention**: camera = pilot's point of view, marshaller faces the camera →
   marshaller's **right arm = image left**

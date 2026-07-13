@@ -35,6 +35,18 @@ del "%TEMP%\DockerDesktopInstaller.exe" >nul 2>nul
 :docker_present
 docker info >nul 2>nul
 if not errorlevel 1 goto docker_ready
+
+rem Docker Desktop runs on the WSL 2 backend; a missing or outdated WSL
+rem shows up as "There was a problem with WSL" in Docker Desktop.
+wsl --status >nul 2>nul
+if errorlevel 1 (
+  echo WSL 2 is not set up - installing it now. Approve the admin prompt if shown.
+  wsl --install --no-distribution
+  echo If Windows asks to reboot, reboot and run this launcher again.
+) else (
+  wsl --update >nul 2>nul
+)
+
 echo Starting Docker Desktop...
 echo (first run only: accept the service agreement in the Docker window -
 echo  this launcher continues automatically once Docker is ready)
@@ -45,6 +57,9 @@ for /l %%i in (1,1,150) do (
 )
 echo Docker did not become ready. If Docker Desktop was just installed,
 echo sign out and back in (or reboot), then run this again.
+echo If Docker Desktop shows "There was a problem with WSL", open
+echo PowerShell as Administrator, run:  wsl --update
+echo then reboot and run this launcher again.
 pause
 exit /b 1
 

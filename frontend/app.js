@@ -1363,7 +1363,18 @@ function tickClock() {
   if (el) el.textContent = new Date().toLocaleTimeString("en-GB", { hour12: false });
 }
 
+/* HMI skin: "nerv" concept theme or "std" MIL-STD-1472 operational theme */
+let hmiTheme = localStorage.getItem("aeroguard-theme") || "nerv";
+function applyTheme(theme) {
+  hmiTheme = theme;
+  document.body.classList.toggle("theme-std", theme === "std");
+  const btn = $("btn-theme");
+  if (btn) btn.textContent = theme === "std" ? "HMI STD" : "HMI NERV";
+  localStorage.setItem("aeroguard-theme", theme);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  applyTheme(hmiTheme);
   runBoot();
   initBg3d();
   animatePose(null);
@@ -1373,6 +1384,9 @@ document.addEventListener("DOMContentLoaded", () => {
   setAudioEnabled(audioEnabled);
   document.addEventListener("pointerdown", unlockAudio, { once: true });
   document.addEventListener("keydown", unlockAudio, { once: true });
+  $("btn-theme").addEventListener("click", () =>
+    applyTheme(hmiTheme === "std" ? "nerv" : "std")
+  );
   $("btn-audio").addEventListener("click", () => {
     setAudioEnabled(!audioEnabled);
     if (audioEnabled) playTone("ATTENTION"); // audible confirmation

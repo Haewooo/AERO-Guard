@@ -789,3 +789,74 @@ footer {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── MIL-STD-1472 operational skin (body.theme-std) ─────────────────
+   Color discipline per MIL-STD-1472 / FAA AC 25.1322:
+     red     = warning (CRITICAL) only
+     amber   = caution (HIGH) only
+     white   = advisory (MEDIUM) / normal text
+   Neutral gray interface chrome; decorative animation removed. */
+body.theme-std {
+  --bg: #101214;
+  --bg2: #16191c;
+  --panel: #14171a;
+  --line: #2a2e33;
+  --edge: rgba(154, 164, 173, 0.5);
+  --orange: #9aa4ad;   /* interface accent: neutral gray */
+  --amber: #d0d6dc;    /* chrome accent: neutral — caution yellow lives in --high */
+  --red: #ff3b30;      /* warning — reserved for alert semantics */
+  --text: #e6e9ec;
+  --muted: #8a9199;
+  --ok: #2ecc71;
+  --low: #9aa1a8;
+  --medium: #e6e9ec;   /* advisory renders white, not amber */
+  --high: #ffcc00;     /* caution — reserved */
+  --critical: #ff3b30;
+  --clip: none;        /* rectangular panels/controls */
+  --clip-btn: none;
+}
+/* no CRT scanlines, vignette, or 3D wireframe backdrop */
+body.theme-std::before,
+body.theme-std::after { content: none; }
+body.theme-std #bg3d { display: none; }
+body.theme-std ::selection { background: rgba(154, 164, 173, 0.35); }
+body.theme-std .brand-mark,
+body.theme-std .boot-hex { box-shadow: none; }
+body.theme-std .boot-hex { animation: none; border-color: var(--orange); }
+body.theme-std .boot-logo { animation: none; text-shadow: none; }
+body.theme-std .hazard {
+  height: 1px;
+  background: var(--line);
+  opacity: 1;
+  animation: none;
+}
+/* emergency: static master-warning presentation — red reserved for the
+   alert itself; single flashing element (acknowledge line) */
+body.theme-std #emergency {
+  background: rgba(0, 0, 0, 0.8);
+  animation: none;
+}
+body.theme-std .em-ring,
+body.theme-std .em-scan { display: none; }
+body.theme-std .em-bar {
+  height: 8px;
+  background: var(--red);
+  animation: none;
+  box-shadow: none;
+  border: none;
+}
+body.theme-std .em-panel {
+  background: #16191c;
+  border: 2px solid var(--red);
+  clip-path: none;
+  animation: none;
+  box-shadow: none;
+}
+body.theme-std .em-title {
+  animation: none;
+  text-shadow: none;
+}
+body.theme-std .em-head { color: var(--muted); }
+body.theme-std #em-msg { color: var(--text); }
+body.theme-std .em-meta { color: var(--red); }
+body.theme-std .em-sub { color: #ffcc00; }
