@@ -146,6 +146,25 @@ async def simulate(req: SimulateRequest, request: Request) -> dict[str, Any]:
     return result
 
 
+@router.post("/vision/pose")
+async def pose_frame(request: Request) -> dict[str, Any]:
+    """Extract pose keypoints from one webcam frame (JPEG/PNG body)."""
+    from fastapi.concurrency import run_in_threadpool
+
+    from ..vision.pose import PoseUnavailableError, extract_keypoints
+
+    body = await request.body()
+    if not body or len(body) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail="empty or oversized image body")
+    try:
+        frame, reason = await run_in_threadpool(extract_keypoints, body)
+    except PoseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"detected": frame is not None, "frame": frame, "reason": reason}
+
+
 @router.get("/vision/signals")
 async def list_signals() -> dict[str, Any]:
     from ..vision.classifier import SIGNAL_LABELS

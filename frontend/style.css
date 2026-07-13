@@ -606,6 +606,29 @@ th {
   letter-spacing: 0.06em;
   text-shadow: 0 0 10px rgba(0, 224, 127, 0.5);
 }
+.signal-big.signal-unknown {
+  color: var(--muted);
+  text-shadow: none;
+}
+
+/* ── live webcam mode ───────────────────────────────────────────── */
+#cam { display: none; }
+
+#live-status {
+  margin-top: 6px;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+button.live {
+  border-color: var(--red);
+  color: var(--red);
+  animation: live-pulse 1.2s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  50% { box-shadow: 0 0 9px rgba(255, 43, 43, 0.55); }
+}
 .conf-bar {
   height: 7px;
   background: #070808;

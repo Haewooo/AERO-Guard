@@ -1,7 +1,7 @@
 # Optional heavy dependencies — install only when needed.
 # ASR (real speech-to-text). Works fully offline after first model download.
 faster-whisper>=1.0
-# Webcam pose capture demo (scripts/webcam_demo.py).
-# NOTE: check mediapipe Python 3.13 wheel availability for your platform.
+# Live webcam marshalling recognition (POST /api/vision/pose).
+# Installed in the Docker image by default. opencv comes as a mediapipe
+# dependency. NOTE: requires Python <= 3.12 (no 3.13 wheels yet).
 mediapipe>=0.10
-opencv-python>=4.9

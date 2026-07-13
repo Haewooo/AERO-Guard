@@ -17,7 +17,9 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     db_path: str = "data/aeroguard.db"
-    rate_limit_per_minute: int = 240
+    # High enough for live webcam pose streaming (~8 fps ≈ 480 req/min)
+    # plus normal console traffic; still bounds abuse on the LAN.
+    rate_limit_per_minute: int = 900
     log_level: str = "INFO"
     max_alerts_in_memory: int = 500
     confidence_threshold: float = 0.5

@@ -110,8 +110,11 @@
       <div class="row">
         <select id="signal-select"></select>
         <button id="btn-simulate" class="primary">Simulate</button>
+        <button id="btn-live">Live Cam</button>
       </div>
+      <video id="cam" playsinline muted></video>
       <canvas id="pose-canvas" width="300" height="270"></canvas>
+      <div id="live-status" class="hidden"></div>
       <div id="signal-result" class="result hidden"></div>
 
       <h2 class="mt"><span class="tag">SYS:05</span> AUDIT LOG <span class="h2-en">HASH CHAIN</span></h2>

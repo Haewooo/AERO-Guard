@@ -59,6 +59,19 @@ async function api(path, options = {}) {
   return res.json();
 }
 
+async function apiRaw(path, blob) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream", "X-API-Key": apiKey },
+    body: blob,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 /* ── websocket ─────────────────────────────────────────────────── */
 function setWsStatus(on, text) {
   const el = $("ws-status");
@@ -282,6 +295,7 @@ async function deliberate(promise) {
 }
 
 function showInlineError(boxId, message) {
+  lastSignalKey = "";
   const box = $(boxId);
   box.classList.remove("hidden");
   box.replaceChildren();
@@ -566,6 +580,7 @@ async function loadSignals() {
 }
 
 async function runSimulate() {
+  if (liveStream) stopLive();
   const signal = $("signal-select").value;
   const btn = $("btn-simulate");
   btn.disabled = true;
@@ -583,14 +598,19 @@ async function runSimulate() {
   }
 }
 
+let lastSignalKey = "";
 function renderSignalResult(result) {
   const box = $("signal-result");
+  const unknown = result.signal === "unknown";
+  const key = `${result.signal}:${Math.round(result.confidence * 100)}`;
+  if (key === lastSignalKey && !box.classList.contains("hidden")) return;
+  lastSignalKey = key;
   box.classList.remove("hidden");
   box.replaceChildren();
 
   const big = document.createElement("div");
-  big.className = "signal-big";
-  big.textContent = result.label;
+  big.className = "signal-big" + (unknown ? " signal-unknown" : "");
+  big.textContent = unknown ? "SCANNING — NOT RECOGNIZED" : result.label;
   box.appendChild(big);
 
   const meta = document.createElement("div");
@@ -697,8 +717,7 @@ function drawSkeleton(ctx, frame, yaw, W, H, alpha) {
   }
 }
 
-function animatePose(frames) {
-  if (poseAnim) cancelAnimationFrame(poseAnim);
+function setupPoseCanvas() {
   const canvas = $("pose-canvas");
   const ctx = canvas.getContext("2d");
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -708,6 +727,12 @@ function animatePose(frames) {
   canvas.width = Math.round(W * dpr);
   canvas.height = Math.round(H * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, W, H };
+}
+
+function animatePose(frames) {
+  if (poseAnim) cancelAnimationFrame(poseAnim);
+  const { ctx, W, H } = setupPoseCanvas();
   let idx = 0;
   let last = 0;
   const trail = [];
@@ -739,6 +764,158 @@ function animatePose(frames) {
     }
   }
   poseAnim = requestAnimationFrame(draw);
+}
+
+/* ── live webcam marshalling ───────────────────────────────────── */
+let liveStream = null;
+let liveCapTimer = null;
+let liveClsTimer = null;
+let liveFrames = [];
+let livePoseBusy = false;
+
+function setLiveStatus(text) {
+  const el = $("live-status");
+  if (!text) {
+    el.classList.add("hidden");
+    return;
+  }
+  el.classList.remove("hidden");
+  el.textContent = text;
+}
+
+function mirrorFrame(frame) {
+  const out = {};
+  for (const [name, p] of Object.entries(frame)) out[name] = [1 - p[0], p[1]];
+  return out;
+}
+
+function animateLive() {
+  if (poseAnim) cancelAnimationFrame(poseAnim);
+  const { ctx, W, H } = setupPoseCanvas();
+
+  function draw() {
+    poseAnim = requestAnimationFrame(draw);
+    ctx.clearRect(0, 0, W, H);
+    drawPlatform(ctx, 0, W, H);
+    if (!liveFrames.length) {
+      ctx.fillStyle = "rgba(141,132,112,0.85)";
+      ctx.font = "10px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("AWAITING BODY LOCK", W / 2, H * 0.5);
+      return;
+    }
+    // mirror for display (selfie view); classification stays pilot-POV
+    const tail = liveFrames.slice(-5);
+    for (let i = 0; i < tail.length; i++) {
+      const isLast = i === tail.length - 1;
+      drawSkeleton(
+        ctx, mirrorFrame(tail[i]), 0, W, H, isLast ? 1 : 0.05 + 0.07 * i
+      );
+    }
+  }
+  poseAnim = requestAnimationFrame(draw);
+}
+
+async function startLive() {
+  const video = $("cam");
+  liveStream = await navigator.mediaDevices.getUserMedia({
+    video: { width: 640, height: 480, facingMode: "user" },
+    audio: false,
+  });
+  video.srcObject = liveStream;
+  await video.play();
+
+  liveFrames = [];
+  livePoseBusy = false;
+  const grab = document.createElement("canvas");
+  grab.width = 320;
+  grab.height = 240;
+  const gctx = grab.getContext("2d");
+
+  liveCapTimer = setInterval(() => {
+    if (livePoseBusy || video.readyState < 2) return;
+    livePoseBusy = true;
+    gctx.drawImage(video, 0, 0, grab.width, grab.height);
+    grab.toBlob(
+      async (blob) => {
+        if (!blob) {
+          livePoseBusy = false;
+          return;
+        }
+        try {
+          const { detected, frame, reason } = await apiRaw("/api/vision/pose", blob);
+          if (detected) {
+            liveFrames.push(frame);
+            if (liveFrames.length > 36) liveFrames.shift();
+            setLiveStatus(`BODY LOCK · ${liveFrames.length} FRAMES BUFFERED`);
+          } else if (!liveFrames.length) {
+            setLiveStatus(
+              reason === "upper_body_not_visible"
+                ? "SUBJECT DETECTED — SHOW HEAD, SHOULDERS, ARMS AND HANDS"
+                : "NO SUBJECT — STAND IN FRAME, UPPER BODY VISIBLE"
+            );
+          }
+        } catch (e) {
+          stopLive();
+          showInlineError("signal-result", "LIVE CAM FAILED — " + e.message);
+        } finally {
+          livePoseBusy = false;
+        }
+      },
+      "image/jpeg",
+      0.7
+    );
+  }, 140);
+
+  liveClsTimer = setInterval(async () => {
+    if (liveFrames.length < 12) return;
+    try {
+      const result = await api("/api/vision/classify", {
+        method: "POST",
+        body: JSON.stringify({ frames: liveFrames.slice() }),
+      });
+      renderSignalResult(result);
+    } catch (_) {}
+  }, 1600);
+
+  animateLive();
+}
+
+function stopLive() {
+  clearInterval(liveCapTimer);
+  clearInterval(liveClsTimer);
+  liveCapTimer = liveClsTimer = null;
+  if (liveStream) {
+    for (const track of liveStream.getTracks()) track.stop();
+    liveStream = null;
+  }
+  const video = $("cam");
+  video.pause();
+  video.srcObject = null;
+  liveFrames = [];
+  setLiveStatus("");
+  const btn = $("btn-live");
+  btn.textContent = "Live Cam";
+  btn.classList.remove("live");
+  animatePose(null);
+}
+
+async function toggleLive() {
+  if (liveStream) {
+    stopLive();
+    return;
+  }
+  const btn = $("btn-live");
+  btn.disabled = true;
+  try {
+    await startLive();
+    btn.textContent = "■ Stop";
+    btn.classList.add("live");
+  } catch (e) {
+    showInlineError("signal-result", "CAMERA UNAVAILABLE — " + e.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 /* ── audit ─────────────────────────────────────────────────────── */
@@ -782,6 +959,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-refresh-alerts").addEventListener("click", refreshAlerts);
   $("btn-occupancy").addEventListener("click", setOccupancy);
   $("btn-simulate").addEventListener("click", runSimulate);
+  $("btn-live").addEventListener("click", toggleLive);
   $("btn-audit-verify").addEventListener("click", verifyAudit);
   $("emergency").addEventListener("click", () =>
     $("emergency").classList.add("hidden")

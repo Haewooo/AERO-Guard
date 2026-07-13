@@ -36,7 +36,7 @@ docker compose ps           # healthcheck: /healthz
 ```
 [ATC voice (optional: faster-whisper)] ─→ text ─→ normalizer ─→ slot extraction ─┐
                                                                                  ├─→ verifier ─→ RiskEngine ─→ alerts/WS
-[CCTV pose (optional: mediapipe)] ─→ keypoints ─→ joint-angle features ─→ 11-signal classifier ─┘        ↑
+[webcam/CCTV frame → mediapipe pose] ─→ keypoints ─→ joint-angle features ─→ 11-signal classifier ─┘     ↑
                                                                           runway occupancy state ────────┘
                                         every mutating event → SHA-256 hash-chain audit log (SQLite WAL)
 ```
@@ -52,7 +52,7 @@ docker compose ps           # healthcheck: /healthz
 | Item | Implementation |
 |---|---|
 | Authentication | `X-API-Key` + `hmac.compare_digest` (timing-attack safe); WebSocket uses query key (closes 4401) |
-| Rate limiting | Per-IP token bucket (default 240 req/min) |
+| Rate limiting | Per-IP token bucket (default 900 req/min — sized for ~8 fps live pose streaming) |
 | Headers | `X-Content-Type-Options`, `X-Frame-Options: DENY`, CSP `default-src 'self'`, `Referrer-Policy` |
 | Audit trail | SHA-256 hash chain over all mutating events; `/api/audit/verify` detects tampering (returns first broken ID) |
 | Exposure minimization | OpenAPI/docs disabled, default bind 127.0.0.1 |
@@ -86,6 +86,7 @@ docker compose ps           # healthcheck: /healthz
 | `POST /api/comms/verify` | instruction/readback text → slot comparison + alerts |
 | `POST /api/asr/transcribe` | speech → text (when faster-whisper is installed) |
 | `POST /api/runway/occupancy` | set/clear runway occupancy |
+| `POST /api/vision/pose` | webcam frame (JPEG body) → pose keypoints (mediapipe, bundled in Docker image) |
 | `POST /api/vision/classify` | keypoint window → signal classification |
 | `POST /api/vision/simulate` | generate + classify a synthetic signal sequence (demo) |
 | `GET /api/alerts` / `POST /api/alerts/{id}/ack` | list/acknowledge alerts |
