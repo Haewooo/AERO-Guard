@@ -69,10 +69,25 @@ for /f "usebackq delims=" %%k in (`powershell -NoProfile -Command "$b = New-Obje
 echo AEROGUARD_API_KEY=%KEY%> .env
 
 :env_ready
+rem Port 8000 already serving AeroGuard from a different copy of the repo?
+curl -sf http://127.0.0.1:8000/healthz >nul 2>nul
+if not errorlevel 1 (
+  docker compose ps -q 2>nul | findstr . >nul || (
+    echo An AeroGuard instance from another folder is already running on
+    echo port 8000. Use it at http://127.0.0.1:8000, or stop it first with
+    echo "docker compose down" in the folder it was started from.
+    pause
+    exit /b 1
+  )
+)
+
 echo Starting AeroGuard (first run builds the image - several minutes)...
 docker compose up -d
 if errorlevel 1 (
-  echo docker compose failed. Inspect with: docker compose logs
+  echo docker compose failed. If the error mentions port 8000 "already
+  echo allocated", another AeroGuard copy is running - stop it with
+  echo "docker compose down" in that folder. Otherwise inspect with:
+  echo   docker compose logs
   pause
   exit /b 1
 )

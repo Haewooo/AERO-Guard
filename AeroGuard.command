@@ -49,8 +49,16 @@ fi
 
 [ -f .env ] || echo "AEROGUARD_API_KEY=$(openssl rand -base64 32)" > .env
 
+# Port 8000 already serving AeroGuard from a different copy of the repo?
+# Bringing this copy up would fail with "port is already allocated".
+if curl -sf http://127.0.0.1:8000/healthz >/dev/null 2>&1 \
+   && [ -z "$(docker compose ps -q 2>/dev/null)" ]; then
+  fail "An AeroGuard instance from another folder is already running on port 8000. Use it at http://127.0.0.1:8000, or stop it first with 'docker compose down' in the folder it was started from."
+fi
+
 echo "Starting AeroGuard (first run builds the image — several minutes)..."
-docker compose up -d
+docker compose up -d \
+  || fail "docker compose failed. If the error mentions port 8000 'already allocated', another AeroGuard copy is running — stop it with 'docker compose down' in that folder."
 
 echo "Waiting for the backend to become healthy..."
 for _ in $(seq 1 90); do
