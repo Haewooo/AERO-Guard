@@ -60,7 +60,7 @@ docker compose ps           # healthcheck: /healthz
 ## Architecture
 
 ```
-[mic/ATC voice → faster-whisper ASR] ─→ text ─→ normalizer ─→ slot extraction ─┐
+[mic/ATC voice → faster-whisper ASR] ─→ text ─→ normalizer ─→ slot extraction ───┐
                                                                                  ├─→ verifier ─→ RiskEngine ─→ alerts/WS
 [webcam/CCTV frame → mediapipe pose] ─→ keypoints ─→ joint-angle features ─→ 11-signal classifier ─┘     ↑
                                                                           runway occupancy state ────────┘
@@ -112,10 +112,15 @@ docker compose ps           # healthcheck: /healthz
 |---|---|
 | `POST /api/comms/verify` | instruction/readback text → slot comparison + alerts |
 | `POST /api/asr/transcribe` | speech → text + slot extraction (whisper "base" baked into Docker image; HMI mic buttons) |
-| `POST /api/runway/occupancy` | set/clear runway occupancy |
+| `GET`/`POST /api/runway/occupancy` | read / set / clear runway occupancy |
 | `POST /api/vision/pose` | webcam frame (JPEG body) → pose keypoints (mediapipe, bundled in Docker image) |
 | `POST /api/vision/classify` | keypoint window → signal classification |
 | `POST /api/vision/simulate` | generate + classify a synthetic signal sequence (demo) |
+| `GET /api/vision/signals` | list the 11 supported marshalling signals |
 | `GET /api/alerts` / `POST /api/alerts/{id}/ack` | list/acknowledge alerts |
 | `GET /api/audit/verify` / `recent` | audit chain integrity / recent records |
 | `GET /healthz` `/readyz` · `WS /ws?api_key=` | health probes · live events |
+
+## License
+
+[MIT](LICENSE)
