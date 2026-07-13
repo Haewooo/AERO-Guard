@@ -66,14 +66,26 @@ function setWsStatus(on, text) {
   el.textContent = text || (on ? "LINK ACTIVE" : "LINK OFFLINE");
 }
 
+let wsRetry = null;
 function connectWs() {
-  if (ws) ws.close();
+  clearTimeout(wsRetry);
+  if (ws) {
+    ws.onclose = null;
+    ws.close();
+  }
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(
     `${proto}://${location.host}/ws?api_key=${encodeURIComponent(apiKey)}`
   );
   ws.onopen = () => setWsStatus(true);
-  ws.onclose = () => setWsStatus(false);
+  ws.onclose = (ev) => {
+    if (ev.code === 4401) {
+      setWsStatus(false, "AUTH FAILED");
+      return;
+    }
+    setWsStatus(false);
+    if (apiKey) wsRetry = setTimeout(connectWs, 3000);
+  };
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.kind === "occupancy") renderOccupancy(msg.data);
@@ -269,6 +281,16 @@ async function deliberate(promise) {
   return result;
 }
 
+function showInlineError(boxId, message) {
+  const box = $(boxId);
+  box.classList.remove("hidden");
+  box.replaceChildren();
+  const line = document.createElement("div");
+  line.className = "status-line status-bad";
+  line.textContent = "✗ " + message;
+  box.appendChild(line);
+}
+
 /* ── comms verification ────────────────────────────────────────── */
 async function runVerify() {
   const instruction = $("instruction").value.trim();
@@ -285,7 +307,7 @@ async function runVerify() {
     );
     renderCommsResult(result);
   } catch (e) {
-    alert("VERIFY FAILED: " + e.message);
+    showInlineError("comms-result", "VERIFY FAILED — " + e.message);
   } finally {
     btn.disabled = false;
   }
@@ -456,10 +478,16 @@ function renderAlerts(alerts) {
       ackBtn.className = "mini";
       ackBtn.textContent = "ACK";
       ackBtn.addEventListener("click", async () => {
-        await api(`/api/alerts/${a.id}/ack`, {
-          method: "POST",
-          body: JSON.stringify({ operator: "console" }),
-        });
+        ackBtn.disabled = true;
+        try {
+          await api(`/api/alerts/${a.id}/ack`, {
+            method: "POST",
+            body: JSON.stringify({ operator: "console" }),
+          });
+        } catch (_) {
+          ackBtn.disabled = false;
+          return;
+        }
         refreshAlerts();
       });
       head.appendChild(ackBtn);
@@ -549,7 +577,7 @@ async function runSimulate() {
     renderSignalResult(result);
     animatePose(result.frames);
   } catch (e) {
-    alert("SIMULATION FAILED: " + e.message);
+    showInlineError("signal-result", "SIMULATION FAILED — " + e.message);
   } finally {
     btn.disabled = false;
   }
@@ -574,9 +602,14 @@ function renderSignalResult(result) {
   bar.className = "conf-bar";
   const fill = document.createElement("div");
   fill.className = "conf-fill";
-  fill.style.width = `${result.confidence * 100}%`;
+  fill.style.width = "0%";
   bar.appendChild(fill);
   box.appendChild(bar);
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      fill.style.width = `${result.confidence * 100}%`;
+    })
+  );
 }
 
 /* ── 3D holographic pose viewer ────────────────────────────────── */
@@ -668,8 +701,13 @@ function animatePose(frames) {
   if (poseAnim) cancelAnimationFrame(poseAnim);
   const canvas = $("pose-canvas");
   const ctx = canvas.getContext("2d");
-  const W = canvas.width;
-  const H = canvas.height;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const rect = canvas.getBoundingClientRect();
+  const W = rect.width || canvas.width;
+  const H = rect.height || canvas.height;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   let idx = 0;
   let last = 0;
   const trail = [];
