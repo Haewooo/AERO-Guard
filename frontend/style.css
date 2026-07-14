@@ -292,7 +292,14 @@ header, main, footer, .hazard { position: relative; z-index: 1; }
 }
 .em-title {
   margin-top: 8px;
-  font-size: clamp(52px, 10vw, 118px);
+  /* the spaced line must never exceed the panel content width: an
+     overflowing centered line is pinned to the left edge and spills
+     right, which reads as the title being shifted sideways. 8.2 =
+     9 glyphs x 0.62em advance + 9 x 0.26em letter-space (trailing
+     space included in the line box) + safety margin. */
+  font-size: clamp(36px, min(10vw, calc((min(88vw, 980px) - 10vw) / 8.2)), 118px);
+  /* rebalance the untrimmed trailing letter-space so glyphs center */
+  padding-left: 0.26em;
   font-weight: 800;
   letter-spacing: 0.26em;
   color: var(--red);
