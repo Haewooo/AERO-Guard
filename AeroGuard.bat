@@ -69,32 +69,35 @@ for /f "usebackq delims=" %%k in (`powershell -NoProfile -Command "$b = New-Obje
 echo AEROGUARD_API_KEY=%KEY%> .env
 
 :env_ready
-rem Port 8000 already serving AeroGuard from a different copy of the repo?
-curl -sf http://127.0.0.1:8000/healthz >nul 2>nul
+rem Pick the host port. If this copy's stack is already up, reuse the port
+rem it is bound to; otherwise take the first free one starting at 8000, so
+rem several copies of the repo can run side by side.
+set "PORT=8000"
+docker compose ps -q 2>nul | findstr . >nul
 if not errorlevel 1 (
-  docker compose ps -q 2>nul | findstr . >nul || (
-    echo An AeroGuard instance from another folder is already running on
-    echo port 8000. Use it at http://127.0.0.1:8000, or stop it first with
-    echo "docker compose down" in the folder it was started from.
-    pause
-    exit /b 1
-  )
+  for /f "tokens=2 delims=:" %%p in ('docker compose port aeroguard 8000 2^>nul') do set "PORT=%%p"
+  goto port_ready
 )
+:port_scan
+powershell -NoProfile -Command "$c = New-Object Net.Sockets.TcpClient; try { $c.Connect('127.0.0.1', %PORT%); exit 1 } catch { exit 0 }" >nul 2>nul
+if not errorlevel 1 goto port_ready
+set /a PORT+=1
+goto port_scan
+:port_ready
+set "AEROGUARD_PORT=%PORT%"
+if not "%PORT%"=="8000" echo Port 8000 is busy - using port %PORT% for this copy.
 
 echo Starting AeroGuard (first run builds the image - several minutes)...
 docker compose up -d
 if errorlevel 1 (
-  echo docker compose failed. If the error mentions port 8000 "already
-  echo allocated", another AeroGuard copy is running - stop it with
-  echo "docker compose down" in that folder. Otherwise inspect with:
-  echo   docker compose logs
+  echo docker compose failed. Inspect with: docker compose logs
   pause
   exit /b 1
 )
 
 echo Waiting for the backend to become healthy...
 for /l %%i in (1,1,90) do (
-  curl -sf http://127.0.0.1:8000/healthz >nul 2>nul && goto backend_ready
+  curl -sf http://127.0.0.1:%PORT%/healthz >nul 2>nul && goto backend_ready
   timeout /t 1 /nobreak >nul
 )
 echo Backend did not become healthy. Inspect with: docker compose logs
@@ -103,7 +106,7 @@ exit /b 1
 
 :backend_ready
 for /f "usebackq tokens=1,* delims==" %%a in (".env") do if "%%a"=="AEROGUARD_API_KEY" set "KEY=%%b"
-set "URL=http://127.0.0.1:8000/#key=%KEY%"
+set "URL=http://127.0.0.1:%PORT%/#key=%KEY%"
 
 start msedge --app="%URL%" 2>nul || start chrome --app="%URL%" 2>nul || start "" "%URL%"
 

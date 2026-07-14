@@ -4,7 +4,9 @@ services:
     image: aeroguard:latest
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      # host port is overridable so several copies of the repo can run
+      # side by side (the launchers pick the first free port)
+      - "${AEROGUARD_PORT:-8000}:8000"
     environment:
       # Set a strong key in production: openssl rand -base64 32
       AEROGUARD_API_KEY: ${AEROGUARD_API_KEY:?set AEROGUARD_API_KEY in .env}

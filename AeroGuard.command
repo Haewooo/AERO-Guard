@@ -49,27 +49,33 @@ fi
 
 [ -f .env ] || echo "AEROGUARD_API_KEY=$(openssl rand -base64 32)" > .env
 
-# Port 8000 already serving AeroGuard from a different copy of the repo?
-# Bringing this copy up would fail with "port is already allocated".
-if curl -sf http://127.0.0.1:8000/healthz >/dev/null 2>&1 \
-   && [ -z "$(docker compose ps -q 2>/dev/null)" ]; then
-  fail "An AeroGuard instance from another folder is already running on port 8000. Use it at http://127.0.0.1:8000, or stop it first with 'docker compose down' in the folder it was started from."
+# Pick the host port. If this copy's stack is already up, reuse the port
+# it is bound to; otherwise take the first free one starting at 8000, so
+# several copies of the repo can run side by side.
+if [ -n "$(docker compose ps -q 2>/dev/null)" ]; then
+  PORT=$(docker compose port aeroguard 8000 2>/dev/null | awk -F: '{print $NF}')
+  PORT=${PORT:-8000}
+else
+  PORT=8000
+  while nc -z 127.0.0.1 "$PORT" >/dev/null 2>&1; do PORT=$((PORT + 1)); done
 fi
+export AEROGUARD_PORT="$PORT"
+[ "$PORT" = "8000" ] || echo "Port 8000 is busy — using port $PORT for this copy."
 
 echo "Starting AeroGuard (first run builds the image — several minutes)..."
 docker compose up -d \
-  || fail "docker compose failed. If the error mentions port 8000 'already allocated', another AeroGuard copy is running — stop it with 'docker compose down' in that folder."
+  || fail "docker compose failed. Inspect with: docker compose logs"
 
 echo "Waiting for the backend to become healthy..."
 for _ in $(seq 1 90); do
-  curl -sf http://127.0.0.1:8000/healthz >/dev/null 2>&1 && break
+  curl -sf "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 && break
   sleep 1
 done
-curl -sf http://127.0.0.1:8000/healthz >/dev/null 2>&1 \
+curl -sf "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 \
   || fail "Backend did not become healthy. Inspect with: docker compose logs"
 
 KEY=$(grep '^AEROGUARD_API_KEY=' .env | cut -d= -f2-)
-URL="http://127.0.0.1:8000/#key=$KEY"
+URL="http://127.0.0.1:$PORT/#key=$KEY"
 
 if [ -d "/Applications/Google Chrome.app" ]; then
   open -na "Google Chrome" --args --app="$URL"
