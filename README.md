@@ -49,7 +49,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env        # set AEROGUARD_API_KEY (if unset: ephemeral key generated + logged warning)
 python -m uvicorn backend.main:app --port 8000
 # Browser: http://127.0.0.1:8000  (HMI console; enter API key at top right)
-pytest tests -q             # 111 tests
+pytest tests -q             # 136 tests
 ```
 
 VSCode: `.vscode/launch.json` (F5 debug) and `.vscode/tasks.json` (serve/test) included.

@@ -63,9 +63,11 @@ async def lifespan(app: FastAPI):
     app.state.ws = WebSocketManager()
     app.state.ready = True
     chain = app.state.audit.verify_chain()
+    # NOTE: never log settings.api_key here — a configured key would leak
+    # into container logs (ephemeral dev keys are logged by resolve_api_key).
     logger.info(
-        "AeroGuard up — audit chain valid=%s records=%s | API key: %s",
-        chain["valid"], chain["records"], settings.api_key,
+        "AeroGuard up — audit chain valid=%s records=%s",
+        chain["valid"], chain["records"],
     )
     yield
     app.state.ready = False

@@ -114,7 +114,7 @@ def _decide(
     ):
         return "move_ahead", 0.88
 
-    # 4) SLOW DOWN: both arms extended near-horizontal, patting motion.
+    # 5) SLOW DOWN: both arms extended near-horizontal, patting motion.
     if (
         f["crossed_frac"] < 0.15
         and 60 <= left["elev_mean"] <= 105
@@ -140,10 +140,10 @@ def _decide(
     for down, active in ((left, right), (right, left)):
         if not _is_down_static(down) or _is_down_static(active):
             continue
-        # 6) ALL CLEAR: active arm straight up, static.
+        # 7) ALL CLEAR: active arm straight up, static.
         if active["elev_mean"] > 140 and active["elev_amp"] < 12:
             return "all_clear", 0.9
-        # 7) CUT ENGINES: horizontal sweep across the throat/neck line —
+        # 8) CUT ENGINES: horizontal sweep across the throat/neck line —
         # large x motion with flat y (elev amp is noisy near the shoulder,
         # so the y amplitude is the discriminating feature vs start_engines).
         if (
@@ -153,7 +153,7 @@ def _decide(
             and active["center_off"] < 0.12
         ):
             return "cut_engines", 0.84
-        # 8) START ENGINES: raised arm circular motion (x and y both move).
+        # 9) START ENGINES: raised arm circular motion (x and y both move).
         if (
             90 <= active["elev_mean"] <= 150
             and active["wx_amp"] >= 0.05

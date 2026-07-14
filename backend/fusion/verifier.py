@@ -20,8 +20,6 @@ class Severity(IntEnum):
     CRITICAL = 4
 
 
-SEVERITY_LABEL = {s: s.name for s in Severity}
-
 # Severity when the readback VALUE differs from the instruction.
 # Grading follows ICAO Doc 9870 (runway instructions dominate incursion
 # statistics) and FAA JO 7110.65 readback/hearback guidance: wrong QNH is

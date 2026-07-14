@@ -22,7 +22,6 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 900
     log_level: str = "INFO"
     max_alerts_in_memory: int = 500
-    confidence_threshold: float = 0.5
 
     def resolve_api_key(self) -> str:
         if not self.api_key or self.api_key == DEV_KEY_PLACEHOLDER:

@@ -11,3 +11,4 @@ models/*
 # downloads intermittently, and in-repo files keep the build air-gap safe
 !models/en_US-amy-medium.onnx
 !models/en_US-amy-medium.onnx.json
+docs/

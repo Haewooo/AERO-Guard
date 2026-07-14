@@ -8,7 +8,6 @@ raised to top priority (potential runway incursion).
 
 from __future__ import annotations
 
-import itertools
 import threading
 import time
 import uuid
