@@ -18,6 +18,22 @@ class ASRUnavailableError(RuntimeError):
     pass
 
 
+# Whisper conditions its decoder on the prompt as preceding context, so a
+# sample of ICAO standard phraseology biases recognition toward ATC
+# vocabulary (niner/fife/tree, phonetic alphabet, clearance phrases) that
+# the general model otherwise mishears in noisy radio audio.
+_ATC_PROMPT = (
+    "Air traffic control radio transmission, ICAO standard phraseology. "
+    "Falcon one six, runway two seven, cleared for takeoff, wind tree one "
+    "zero degrees at niner knots. Hold short of runway one six. Taxi to "
+    "holding point via alpha, bravo, charlie. Line up and wait runway "
+    "three four. Cleared to land. Cross runway two two. Climb and maintain "
+    "fife thousand. Turn left heading two niner zero. Reduce speed one "
+    "eight zero knots. Contact tower one one eight decimal seven. Squawk "
+    "four five two one. QNH one zero one three. Readback correct. Wilco."
+)
+
+
 def _load_model():
     global _model
     with _lock:
@@ -37,7 +53,10 @@ def transcribe(audio_path: str) -> dict:
     model = _load_model()
     try:
         segments, info = model.transcribe(
-            audio_path, language="en", vad_filter=True
+            audio_path,
+            language="en",
+            vad_filter=True,
+            initial_prompt=_ATC_PROMPT,
         )
         parts = [seg.text.strip() for seg in segments]
     except ASRUnavailableError:

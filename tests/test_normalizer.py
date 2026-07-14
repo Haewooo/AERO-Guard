@@ -28,3 +28,16 @@ def test_mixed_callsign():
 
 def test_numeric_passthrough():
     assert normalize("Runway 36, cleared for takeoff") == "runway 36 cleared for takeoff"
+
+
+def test_sentence_period_on_digit_words():
+    # ASR emits sentence punctuation glued to spoken digits
+    assert normalize("squawk four five two one. QNH one zero one three.") == "squawk 4521 qnh 1013"
+
+
+def test_sentence_period_on_niner():
+    assert normalize("wind tree one zero at niner.") == "wind 310 at 9"
+
+
+def test_decimal_frequency_survives_sentence_period():
+    assert normalize("contact tower 118.7. good day") == "contact tower 118.7 good day"

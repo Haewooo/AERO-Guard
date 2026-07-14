@@ -9,7 +9,9 @@ to produce prioritized alerts.
 ## Features
 
 - **Readback verification** — ICAO Doc 4444 slot extraction and instruction/readback
-  comparison, with microphone dictation through on-premises Whisper ASR
+  comparison, with microphone dictation through on-premises Whisper ASR whose
+  decoding is biased toward ICAO standard phraseology (initial-prompt conditioning:
+  niner/fife/tree, phonetic alphabet, clearance phrases)
 - **Marshalling signal recognition** — live webcam pose capture (MediaPipe) classified
   against the 11 ICAO Annex 2 hand signals, mirrored on the HMI in real time
 - **Risk fusion** — clearances cross-checked against runway occupancy state;

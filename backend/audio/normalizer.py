@@ -31,6 +31,9 @@ MULTIPLIERS = {"thousand": 1000, "hundred": 100}
 DECIMAL_WORDS = {"decimal", "point"}
 
 _PUNCT_RE = re.compile(r"[^\w\s.\-]")
+# keep only decimal points (digit.digit, e.g. "118.7"); sentence punctuation
+# glued to words by ASR ("niner.", "one.") must not defeat digit-word lookup
+_STRAY_DOT_RE = re.compile(r"(?<!\d)\.|\.(?!\d)")
 _WORD_SPLIT_RE = re.compile(r"[\s\-]+")
 
 
@@ -43,7 +46,8 @@ def _flush_number(total: int, cur: str, out: list[str]) -> None:
 
 def normalize(text: str) -> str:
     """Return normalized utterance as a single spaced string."""
-    raw_tokens = _WORD_SPLIT_RE.split(_PUNCT_RE.sub(" ", text.strip().lower()))
+    cleaned = _STRAY_DOT_RE.sub(" ", _PUNCT_RE.sub(" ", text.strip().lower()))
+    raw_tokens = _WORD_SPLIT_RE.split(cleaned)
     tokens: list[str] = []
     for tok in raw_tokens:
         if not tok:
