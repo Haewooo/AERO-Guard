@@ -1,5 +1,13 @@
 /* ── AEROGUARD tactical console — NERV/MAGI-inspired theme ─────── */
 :root {
+  /* Type scale. Character height matters as a visual angle, not as pixels:
+     at a 640 mm console viewing distance these resolve to ~12.8/14.2/15.6
+     arcmin, which sits on the absolute-minimum line rather than inside the
+     16-22 arcmin band read-critical text is meant to occupy. The concept
+     skin keeps them; the operational skin raises them (see .theme-std). */
+  --fs-xs: 9px;
+  --fs-sm: 10px;
+  --fs-md: 11px;
   --bg: #050607;
   --bg2: #0a0c0d;
   --panel: #0c0e0f;
@@ -104,7 +112,7 @@ header, main, footer, .hazard { position: relative; z-index: 1; }
   min-height: 120px;
   width: min(560px, 88vw);
   color: var(--orange);
-  font-size: 11px;
+  font-size: var(--fs-md);
   line-height: 1.8;
   letter-spacing: 0.08em;
   white-space: pre-wrap;
@@ -140,11 +148,11 @@ header, main, footer, .hazard { position: relative; z-index: 1; }
   clip-path: var(--clip);
   transition: box-shadow 0.15s, border-color 0.15s;
 }
-.magi-node span { color: var(--muted); font-size: 9px; letter-spacing: 0.25em; }
+.magi-node span { color: var(--muted); font-size: var(--fs-xs); letter-spacing: 0.25em; }
 .magi-node b { color: var(--text); font-size: 13px; letter-spacing: 0.1em; }
 .magi-node i {
   font-style: normal;
-  font-size: 10px;
+  font-size: var(--fs-sm);
   letter-spacing: 0.2em;
   color: var(--muted);
   margin-top: 6px;
@@ -287,7 +295,7 @@ header, main, footer, .hazard { position: relative; z-index: 1; }
   margin: 0 8px;
   border-bottom: 1px solid rgba(255, 43, 43, 0.4);
   color: var(--amber);
-  font-size: 11px;
+  font-size: var(--fs-md);
   letter-spacing: 0.22em;
 }
 .em-title {
@@ -337,7 +345,7 @@ header, main, footer, .hazard { position: relative; z-index: 1; }
 .em-sub {
   margin-top: 12px;
   color: var(--amber);
-  font-size: 11px;
+  font-size: var(--fs-md);
   letter-spacing: 0.3em;
   animation: blink 1s steps(2, end) infinite;
 }
@@ -380,7 +388,7 @@ h1 {
 .brand-text small {
   display: block;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-sm);
   letter-spacing: 0.14em;
   margin-top: 4px;
 }
@@ -388,7 +396,7 @@ h1 {
 .sys-meta { display: flex; gap: 10px; }
 .meta-block {
   display: flex; flex-direction: column;
-  font-size: 9px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.18em;
   color: var(--muted);
   border-left: 2px solid var(--edge);
@@ -405,7 +413,7 @@ h1 {
 
 .header-right { display: flex; gap: 8px; align-items: center; }
 
-#btn-audio { padding: 4px 10px; font-size: 10px; }
+#btn-audio { padding: 4px 10px; font-size: var(--fs-sm); }
 #btn-audio.audio-off {
   color: var(--muted);
   border-color: var(--muted);
@@ -417,7 +425,7 @@ h1 {
 
 .ws-badge {
   padding: 4px 12px;
-  font-size: 10px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   letter-spacing: 0.15em;
   clip-path: var(--clip-btn);
@@ -484,7 +492,7 @@ h2 {
 h2 .tag {
   background: var(--orange);
   color: #000;
-  font-size: 9px;
+  font-size: var(--fs-xs);
   font-weight: 800;
   letter-spacing: 0.1em;
   padding: 2px 6px;
@@ -493,7 +501,7 @@ h2 .tag {
 }
 h2 .h2-en {
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.22em;
 }
 h2 .mini { margin-left: auto; }
@@ -503,7 +511,7 @@ label {
   display: block;
   color: var(--muted);
   margin: 10px 0 4px;
-  font-size: 10px;
+  font-size: var(--fs-sm);
   letter-spacing: 0.14em;
 }
 
@@ -538,7 +546,7 @@ button {
   padding: 8px 16px;
   cursor: pointer;
   font-family: inherit;
-  font-size: 11px;
+  font-size: var(--fs-md);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -555,7 +563,7 @@ button.primary {
   box-shadow: 0 0 12px rgba(255, 122, 26, 0.4);
 }
 button.primary:hover { background: var(--amber); border-color: var(--amber); }
-button.mini { padding: 2px 8px; font-size: 9px; }
+button.mini { padding: 2px 8px; font-size: var(--fs-xs); }
 
 .scenarios {
   margin-top: 12px;
@@ -566,11 +574,11 @@ button.mini { padding: 2px 8px; font-size: 9px; }
 }
 .scenarios .hint {
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-sm);
   letter-spacing: 0.18em;
 }
 button.scenario {
-  font-size: 10px;
+  font-size: var(--fs-sm);
   padding: 4px 9px;
   color: var(--muted);
   border-color: var(--line);
@@ -610,13 +618,13 @@ button.scenario:hover {
 .slot-strip { margin-top: 8px; }
 .slot-strip .side {
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.2em;
   margin: 6px 0 4px;
 }
 .slot-chips { display: flex; flex-wrap: wrap; gap: 5px; }
 .slot-chip {
-  font-size: 10px;
+  font-size: var(--fs-sm);
   padding: 2px 7px;
   border: 1px solid var(--line);
   border-left: 2px solid var(--orange);
@@ -625,36 +633,54 @@ button.scenario:hover {
   letter-spacing: 0.04em;
 }
 .slot-chip b { color: var(--amber); font-weight: 700; }
-.slot-none { color: var(--muted); font-size: 10px; }
+.slot-none { color: var(--muted); font-size: var(--fs-sm); }
 
 table { width: 100%; border-collapse: collapse; margin-top: 10px; }
 th, td {
   text-align: left;
   padding: 5px 8px;
   border-bottom: 1px dashed var(--line);
-  font-size: 11px;
+  font-size: var(--fs-md);
 }
 th {
   color: var(--muted);
   font-weight: normal;
-  font-size: 9px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
 
 .sev {
   padding: 1px 7px;
-  font-size: 10px;
+  font-size: var(--fs-sm);
   font-weight: 800;
   color: #000;
   clip-path: var(--clip-btn);
   letter-spacing: 0.06em;
 }
+/* Redundant shape coding. Warning red and caution amber differ by only
+   2.35:1 in luminance and are the classic confusion pair for red-green
+   colour vision deficiency (~8% of men), so severity must be legible
+   without relying on hue. Each level carries a distinct glyph as well as
+   its written name and priority. */
+.sev::before {
+  margin-right: 5px;
+  font-weight: 900;
+}
+.sev-OK::before { content: "\2713"; }        /* check    — normal */
+.sev-LOW::before { content: "\25AA"; }       /* small square */
+.sev-MEDIUM::before { content: "\25CF"; }    /* circle   — advisory */
+.sev-HIGH::before { content: "\25C6"; }      /* diamond  — caution */
+.sev-CRITICAL::before { content: "\25B2"; }  /* triangle — warning */
 .sev-OK { background: var(--ok); }
 .sev-LOW { background: var(--low); }
 .sev-MEDIUM { background: var(--medium); }
 .sev-HIGH { background: var(--high); }
-.sev-CRITICAL { background: var(--critical); color: #fff; }
+/* Black on the warning red measures 5.92:1 against white's 3.55:1, and
+   keeps the red bright enough to hold 5.07:1 against the panel where the
+   same colour is used for the severity rail. Darkening the red to carry
+   white text would cost that. */
+.sev-CRITICAL { background: var(--critical); }
 
 /* ── alerts ─────────────────────────────────────────────────────── */
 .alert-list { list-style: none; }
@@ -666,10 +692,27 @@ th {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent), var(--bg2);
   clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
 }
-.alert-item.sevb-CRITICAL { border-left-color: var(--critical); }
-.alert-item.sevb-HIGH { border-left-color: var(--high); }
-.alert-item.sevb-MEDIUM { border-left-color: var(--medium); }
-.alert-item.sevb-LOW { border-left-color: var(--low); }
+/* The severity rail is coded by width and line style as well as colour,
+   so the list still ranks correctly in greyscale or for a colour-blind
+   operator. */
+.alert-item.sevb-CRITICAL {
+  border-left-color: var(--critical);
+  border-left-width: 8px;
+  border-left-style: solid;
+}
+.alert-item.sevb-HIGH {
+  border-left-color: var(--high);
+  border-left-width: 6px;
+  border-left-style: double;
+}
+.alert-item.sevb-MEDIUM {
+  border-left-color: var(--medium);
+  border-left-style: solid;
+}
+.alert-item.sevb-LOW {
+  border-left-color: var(--low);
+  border-left-style: dotted;
+}
 .alert-item.sevb-CRITICAL:not(.acked) {
   animation: alertpulse 1s steps(2, end) infinite;
 }
@@ -685,7 +728,7 @@ th {
 .alert-msg { margin-top: 6px; font-size: 12px; line-height: 1.55; }
 .alert-meta {
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.08em;
   margin-top: 5px;
 }
@@ -705,7 +748,7 @@ th {
   font-size: 12px;
   letter-spacing: 0.06em;
 }
-.occ-empty { color: var(--muted); font-size: 10px; letter-spacing: 0.12em; }
+.occ-empty { color: var(--muted); font-size: var(--fs-sm); letter-spacing: 0.12em; }
 
 /* ── 3D pose viewer ─────────────────────────────────────────────── */
 #pose-canvas {
@@ -733,7 +776,7 @@ th {
 
 #live-status {
   margin-top: 6px;
-  font-size: 9px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.12em;
   color: var(--muted);
 }
@@ -756,7 +799,7 @@ button.live {
   margin: 10px 0 4px;
 }
 button.mic {
-  font-size: 9px;
+  font-size: var(--fs-xs);
   padding: 3px 10px;
   letter-spacing: 0.1em;
 }
@@ -767,6 +810,15 @@ button.mic {
   margin-top: 7px;
   overflow: hidden;
 }
+.near-miss {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+}
+.near-miss div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 .conf-fill {
   height: 100%;
   background: repeating-linear-gradient(
@@ -782,12 +834,12 @@ footer {
   gap: 12px;
   padding: 8px 18px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.1em;
   background: rgba(8, 9, 9, 0.92);
 }
 
-#audit-status { font-size: 11px; letter-spacing: 0.05em; }
+#audit-status { font-size: var(--fs-md); letter-spacing: 0.05em; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -804,6 +856,12 @@ footer {
      white   = advisory (MEDIUM) / normal text
    Neutral gray interface chrome; decorative animation removed. */
 body.theme-std {
+  /* Legibility floor: 12/13/14 px is ~17.1/18.5/19.9 arcmin at 640 mm,
+     inside the band recommended for read-critical text. The concept skin
+     trades that for information density; an operational console must not. */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
   --bg: #101214;
   --bg2: #16191c;
   --panel: #14171a;

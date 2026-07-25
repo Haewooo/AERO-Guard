@@ -11,6 +11,28 @@ if (location.hash.startsWith("#key=")) {
 }
 let ws = null;
 let poseAnim = null;
+
+/* Live capture budget.
+ *
+ * The server is not the constraint: pose extraction round-trips in ~15 ms
+ * and a 36-frame classification in ~3 ms, so ~67 fps is available. The old
+ * 140 ms / 1600 ms timers threw that away and put recognition latency at
+ * ~4.1 s typical, 6.6 s worst case — a 36-frame window at 7.1 fps holds
+ * 5 s of history, so a new gesture needed ~2.5 s just to win the majority
+ * of the window, plus up to 1.6 s waiting for the next classification.
+ *
+ * At 70 ms / 400 ms the same window spans 2.5 s and latency drops to ~1.7 s
+ * typical. 70 ms still leaves 4x headroom over the pose round-trip, so the
+ * capture loop never backs up. Two cycles of a ~1.25 s marshalling gesture
+ * still fit in the window, which is what the amplitude features need.
+ *
+ * Request budget per operator: ~857/min pose + ~150/min classify. See
+ * AEROGUARD_RATE_LIMIT_PER_MINUTE.
+ */
+const CAPTURE_INTERVAL_MS = 70;
+const CLASSIFY_INTERVAL_MS = 400;
+const WINDOW_FRAMES = 36;
+const MIN_FRAMES_TO_CLASSIFY = 12;
 let alertsPrimed = false;
 const seenAlerts = new Set();
 
@@ -109,10 +131,13 @@ function connectWs() {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.kind === "occupancy") renderOccupancy(msg.data);
+    // A classification arrives several times a second now. Refetching the
+    // whole alert list on each one was pure churn — only do it when the
+    // message actually carries an alert.
     if (
       msg.kind === "comms_result" ||
-      msg.kind === "signal_result" ||
-      msg.kind === "alert_ack"
+      msg.kind === "alert_ack" ||
+      (msg.kind === "signal_result" && msg.data && msg.data.alert)
     ) {
       refreshAlerts();
     }
@@ -852,14 +877,46 @@ async function refreshAlerts() {
 
 let emTimer = null;
 let emSeq = 0;
-function showEmergency(message) {
+let emDismissed = false;
+
+// A master warning is not a notification: it stays up while the condition
+// holds, and clears when the condition does. The backend deduplicates the
+// *alert record* to one per episode so the log and the annunciator do not
+// flood — but suppressing the record must not also blank the screen while
+// the marshaller is still signalling.
+function showEmergency(message, { sticky = false } = {}) {
   const em = $("emergency");
+  const showing = !em.classList.contains("hidden");
+  if (sticky && showing) return;      // already up; do not restart the animation
+  if (sticky && emDismissed) return;  // operator cleared it for this episode
   $("em-msg").textContent = message;
   $("em-time").textContent = new Date().toISOString().slice(11, 19) + "Z";
-  $("em-code").textContent = "EVT " + String(++emSeq).padStart(3, "0");
+  if (!showing) $("em-code").textContent = "EVT " + String(++emSeq).padStart(3, "0");
   em.classList.remove("hidden");
   clearTimeout(emTimer);
-  emTimer = setTimeout(() => em.classList.add("hidden"), 5000);
+  emTimer = sticky ? null : setTimeout(() => em.classList.add("hidden"), 5000);
+}
+
+function clearEmergency() {
+  clearTimeout(emTimer);
+  emTimer = null;
+  $("emergency").classList.add("hidden");
+}
+
+// Drive the takeover from the live classification, so every recognised
+// EMERGENCY STOP is visible even when its alert was deduplicated away.
+// `emDismissed` is owned here alone: it is set by the operator's click and
+// reset exactly when the signal clears, which is what ends the episode.
+function syncEmergencyToSignal(result) {
+  if (result.signal === "emergency_stop") {
+    showEmergency("Marshaller EMERGENCY STOP hand signal detected", {
+      sticky: true,
+    });
+  } else if (emTimer === null) {
+    // Only auto-clear a sticky takeover; a timed one owns its own lifetime.
+    emDismissed = false;
+    clearEmergency();
+  }
 }
 
 function processNewAlerts(alerts) {
@@ -910,10 +967,9 @@ function renderAlerts(alerts) {
       ackBtn.addEventListener("click", async () => {
         ackBtn.disabled = true;
         try {
-          await api(`/api/alerts/${a.id}/ack`, {
-            method: "POST",
-            body: JSON.stringify({ operator: "console" }),
-          });
+          // The acknowledging operator is derived from the API key
+          // server-side — attribution is never taken from the client.
+          await api(`/api/alerts/${a.id}/ack`, { method: "POST" });
         } catch (_) {
           ackBtn.disabled = false;
           return;
@@ -1018,6 +1074,9 @@ let lastSignalKey = "";
 function renderSignalResult(result) {
   const box = $("signal-result");
   const unknown = result.signal === "unknown";
+  // Before the de-duplicating early return below: the takeover must track
+  // the current signal even when the readout itself has not changed.
+  syncEmergencyToSignal(result);
   const key = `${result.signal}:${Math.round(result.confidence * 100)}`;
   if (key === lastSignalKey && !box.classList.contains("hidden")) return;
   lastSignalKey = key;
@@ -1028,6 +1087,26 @@ function renderSignalResult(result) {
   big.className = "signal-big" + (unknown ? " signal-unknown" : "");
   big.textContent = unknown ? "SCANNING — NOT RECOGNIZED" : result.label;
   box.appendChild(big);
+
+  // "NOT RECOGNIZED" on its own tells the operator nothing they can act on.
+  // Show which rules came closest and the measurement that fell short, so a
+  // badly-performed gesture is distinguishable from a threshold that does
+  // not survive a real camera.
+  if (unknown && result.near_misses && result.near_misses.length) {
+    const why = document.createElement("div");
+    why.className = "near-miss";
+    for (const nm of result.near_misses.slice(0, 2)) {
+      const row = document.createElement("div");
+      const label = nm.signal.replace(/_/g, " ").toUpperCase();
+      const short = nm.failed
+        .slice(0, 2)
+        .map((d) => `${d.feature} ${d.measured} (needs ${d.needs})`)
+        .join(" · ");
+      row.textContent = `${label} ${nm.satisfied}/${nm.total} — ${short}`;
+      why.appendChild(row);
+    }
+    box.appendChild(why);
+  }
 
   const meta = document.createElement("div");
   meta.className = "alert-meta";
@@ -1262,7 +1341,7 @@ async function startLive() {
           const { detected, frame, reason } = await apiRaw("/api/vision/pose", blob);
           if (detected) {
             liveFrames.push(frame);
-            if (liveFrames.length > 36) liveFrames.shift();
+            if (liveFrames.length > WINDOW_FRAMES) liveFrames.shift();
             setLiveStatus(`BODY LOCK · ${liveFrames.length} FRAMES BUFFERED`);
           } else if (!liveFrames.length) {
             setLiveStatus(
@@ -1281,10 +1360,10 @@ async function startLive() {
       "image/jpeg",
       0.7
     );
-  }, 140);
+  }, CAPTURE_INTERVAL_MS);
 
   liveClsTimer = setInterval(async () => {
-    if (liveFrames.length < 12) return;
+    if (liveFrames.length < MIN_FRAMES_TO_CLASSIFY) return;
     try {
       const result = await api("/api/vision/classify", {
         method: "POST",
@@ -1292,7 +1371,7 @@ async function startLive() {
       });
       renderSignalResult(result);
     } catch (_) {}
-  }, 1600);
+  }, CLASSIFY_INTERVAL_MS);
 
   animateLive();
 }
@@ -1404,9 +1483,12 @@ document.addEventListener("DOMContentLoaded", () => {
   for (const btn of document.querySelectorAll("button.mic")) {
     btn.addEventListener("click", () => toggleMic(btn));
   }
-  $("emergency").addEventListener("click", () =>
-    $("emergency").classList.add("hidden")
-  );
+  $("emergency").addEventListener("click", () => {
+    // Acknowledging hides it for as long as this episode lasts; it re-arms
+    // once the signal clears, so the next gesture shows the takeover again.
+    clearEmergency();
+    emDismissed = true;
+  });
   for (const btn of document.querySelectorAll("button.scenario")) {
     btn.addEventListener("click", () => {
       const sc = SCENARIOS[btn.dataset.scenario];

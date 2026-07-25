@@ -1,7 +1,8 @@
 import pytest
 
-from backend.vision.classifier import SIGNALS, classify_window
+from backend.vision.classifier import MIN_CONFIDENCE, SIGNALS, classify_window
 from backend.vision.simulator import generate_sequence
+from evaluation.corpus import with_noise
 
 
 @pytest.mark.parametrize("signal", SIGNALS)
@@ -9,8 +10,35 @@ from backend.vision.simulator import generate_sequence
 def test_all_signals_roundtrip(signal, seed):
     result = classify_window(generate_sequence(signal, seed=seed))
     assert result["signal"] == signal
-    assert result["confidence"] >= 0.8
+    assert result["confidence"] > MIN_CONFIDENCE
     assert result["ai_assisted"] is True
+
+
+def test_confidence_reflects_margin_not_a_constant():
+    """The score must vary with the quality of the evidence.
+
+    It used to be a per-signal constant, which read like a probability in
+    the API and the HMI while carrying no information — every
+    emergency_stop reported 0.9 whether the match was marginal or
+    overwhelming. A degraded capture must now score lower than a clean one.
+    """
+    clean = classify_window(generate_sequence("stop", seed=1))
+    degraded = [
+        classify_window(with_noise(generate_sequence("stop", seed=s), 0.012, s))
+        for s in range(8)
+    ]
+    still_stop = [r["confidence"] for r in degraded if r["signal"] == "stop"]
+    assert still_stop, "noisy input should still classify"
+    assert min(still_stop) < clean["confidence"]
+    assert len({round(c, 3) for c in still_stop}) > 1
+
+
+def test_unknown_carries_no_confidence():
+    frames = generate_sequence("stop", seed=1)
+    flat = [{k: [0.5, 0.5] for k in f} for f in frames]
+    result = classify_window(flat)
+    assert result["signal"] == "unknown"
+    assert result["confidence"] == 0.0
 
 
 def test_scale_invariance():
