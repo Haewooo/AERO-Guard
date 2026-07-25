@@ -81,10 +81,28 @@ jobs:
         run: pip-audit --requirement requirements-full-x86_64.lock --strict
 
       - name: Generate SBOM
+        # Introspect the locked environment from outside it: installing the
+        # SBOM tool into /tmp/lockcheck would put cyclonedx and its own
+        # dependency tree into the bill of materials for the deployment.
         run: |
-          /tmp/lockcheck/bin/pip install cyclonedx-bom
-          /tmp/lockcheck/bin/cyclonedx-py environment /tmp/lockcheck \
-            --output-format json --outfile sbom.json
+          cyclonedx-py environment /tmp/lockcheck \
+            --of JSON --output-reproducible -o sbom.json
+
+      - name: Track the aarch64 lock's known exposure
+        # Report-only, deliberately. The image CI builds and gates on is
+        # x86_64 and is clean. On aarch64 mediapipe publishes nothing newer
+        # than 0.10.18, which pins protobuf <5, while the fix for
+        # CVE-2026-0994 first lands in 5.29.6 — so the finding cannot be
+        # resolved by any lock this repository can produce, and failing on
+        # it would only train people to ignore the job. It is surfaced here
+        # so an Apple Silicon build's exposure is visible rather than
+        # silent, and so this step starts passing the day mediapipe ships
+        # an aarch64 wheel that allows protobuf >= 5.
+        run: |
+          mkdir -p /tmp/arm
+          cp requirements-full-aarch64.lock /tmp/arm/requirements.txt
+          docker run --rm -v /tmp/arm:/scan:ro aquasec/trivy:latest fs \
+            --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed /scan
 
       - uses: actions/upload-artifact@v4
         with:
