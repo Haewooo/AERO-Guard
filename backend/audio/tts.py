@@ -54,10 +54,15 @@ def _load_voice():
 
 
 def synthesize(text: str) -> bytes:
-    from piper import SynthesisConfig
-
     with _lock:  # single shared onnx session; serialize load + synthesis
         voice = _load_voice()
+        # Imported after the availability check, never before it. At the top
+        # of this function a missing piper raised ModuleNotFoundError straight
+        # past the TTSUnavailableError handling, so the API answered 500
+        # where it documents 503 — and no local run noticed, because a dev
+        # environment that can test TTS has piper installed by definition.
+        from piper import SynthesisConfig
+
         buf = io.BytesIO()
         with wave.open(buf, "wb") as wav:
             # slightly stretched for the annunciator's measured delivery
