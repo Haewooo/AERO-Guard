@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..audio.slots import extract_slots
 from ..fusion.verifier import verify_readback
+from ..security import operator_of
 from ..vision.classifier import SIGNALS, classify_window
 from ..vision.simulator import generate_sequence
 
@@ -18,7 +19,6 @@ router = APIRouter(prefix="/api")
 class CommsRequest(BaseModel):
     instruction: str = Field(min_length=1, max_length=2000)
     readback: str = Field(min_length=1, max_length=2000)
-    operator: str = Field(default="console", max_length=100)
 
 
 class OccupancyRequest(BaseModel):
@@ -33,10 +33,6 @@ class ClassifyRequest(BaseModel):
 class SimulateRequest(BaseModel):
     signal: str
     seed: int | None = None
-
-
-class AckRequest(BaseModel):
-    operator: str = Field(default="console", max_length=100)
 
 
 class TTSRequest(BaseModel):
@@ -59,7 +55,7 @@ async def verify_comms(req: CommsRequest, request: Request) -> dict[str, Any]:
         "alerts": alerts,
         "ai_assisted": True,
     }
-    state.audit.append(req.operator, "COMMS_VERIFY", {
+    state.audit.append(operator_of(request), "COMMS_VERIFY", {
         "instruction": req.instruction,
         "readback": req.readback,
         "status": verification["status"],
@@ -80,7 +76,7 @@ async def get_occupancy(request: Request) -> dict[str, Any]:
 async def set_occupancy(req: OccupancyRequest, request: Request) -> dict[str, Any]:
     state = request.app.state
     occupancy = state.risk.set_occupancy(req.runway, req.callsign)
-    state.audit.append("console", "OCCUPANCY_SET", {
+    state.audit.append(operator_of(request), "OCCUPANCY_SET", {
         "runway": req.runway.upper(),
         "callsign": req.callsign.upper() if req.callsign else None,
     })
@@ -95,12 +91,13 @@ async def list_alerts(request: Request, limit: int = 100) -> dict[str, Any]:
 
 
 @router.post("/alerts/{alert_id}/ack")
-async def ack_alert(alert_id: str, req: AckRequest, request: Request) -> dict[str, Any]:
+async def ack_alert(alert_id: str, request: Request) -> dict[str, Any]:
     state = request.app.state
-    alert = state.risk.acknowledge(alert_id, req.operator)
+    operator = operator_of(request)
+    alert = state.risk.acknowledge(alert_id, operator)
     if alert is None:
         raise HTTPException(status_code=404, detail="alert not found")
-    state.audit.append(req.operator, "ALERT_ACK", {"alert_id": alert_id})
+    state.audit.append(operator, "ALERT_ACK", {"alert_id": alert_id})
     await state.ws.broadcast({"kind": "alert_ack", "data": alert})
     return alert
 
@@ -116,10 +113,22 @@ async def classify(req: ClassifyRequest, request: Request) -> dict[str, Any]:
     emergency = state.risk.evaluate_signal(result)
     if emergency:
         result["alert"] = emergency
-    state.audit.append("vision", "SIGNAL_CLASSIFY", {
-        "signal": result["signal"],
-        "confidence": result["confidence"],
-    })
+    # Audit transitions, not every window. The HMI classifies ~150 times a
+    # minute, and a record per window would add ~89 MB/day of "still the
+    # same signal" — 8 GB over the retention window — while burying the
+    # events that carry accountability. Every change of signal and every
+    # alert is still recorded, so the trail reconstructs what the system
+    # saw and when it changed.
+    previous = getattr(state, "last_signal", None)
+    if emergency or result["signal"] != previous:
+        state.audit.append(operator_of(request), "SIGNAL_CLASSIFY", {
+            "channel": "vision",
+            "signal": result["signal"],
+            "previous": previous,
+            "confidence": result["confidence"],
+            "alerted": bool(emergency),
+        })
+    state.last_signal = result["signal"]
     await state.ws.broadcast({"kind": "signal_result", "data": result})
     return result
 
@@ -138,7 +147,8 @@ async def simulate(req: SimulateRequest, request: Request) -> dict[str, Any]:
         result["alert"] = emergency
     result["simulated_signal"] = req.signal
     result["frames"] = frames
-    state.audit.append("vision", "SIGNAL_SIMULATE", {
+    state.audit.append(operator_of(request), "SIGNAL_SIMULATE", {
+        "channel": "vision",
         "simulated": req.signal,
         "classified": result["signal"],
         "confidence": result["confidence"],
@@ -200,7 +210,8 @@ async def transcribe_audio(request: Request) -> dict[str, Any]:
     finally:
         Path(tmp_path).unlink(missing_ok=True)
     result["slots"] = extract_slots(result["text"])
-    request.app.state.audit.append("asr", "ASR_TRANSCRIBE", {
+    request.app.state.audit.append(operator_of(request), "ASR_TRANSCRIBE", {
+        "channel": "asr",
         "text": result["text"], "duration": result["duration"],
     })
     return result

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import threading
 
+from ..runtime import inference_threads
+
 _lock = threading.Lock()
 _model = None
 
@@ -38,6 +40,11 @@ def _load_model():
     global _model
     with _lock:
         if _model is None:
+            # CTranslate2 degrades at both extremes — measured 883 ms at
+            # 1 thread and 783 ms at 14, against 340 ms at 4 (see
+            # backend/runtime.py). Size it explicitly instead of letting it
+            # infer a count from a host core count the cgroup does not grant.
+            threads = inference_threads()
             try:
                 from faster_whisper import WhisperModel
             except ImportError as exc:
@@ -45,7 +52,9 @@ def _load_model():
                     "faster-whisper is not installed. "
                     "Run: pip install -r requirements-optional.txt"
                 ) from exc
-            _model = WhisperModel("base", device="auto", compute_type="int8")
+            _model = WhisperModel(
+                "base", device="auto", compute_type="int8", cpu_threads=threads
+            )
     return _model
 
 

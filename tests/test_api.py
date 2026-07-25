@@ -60,11 +60,11 @@ def test_comms_verify_incursion_flow(client):
     assert "RUNWAY_INCURSION" in types
 
     alert_id = body["alerts"][0]["id"]
-    res = client.post(
-        f"/api/alerts/{alert_id}/ack", headers=HEADERS, json={"operator": "twr-1"}
-    )
+    res = client.post(f"/api/alerts/{alert_id}/ack", headers=HEADERS)
     assert res.status_code == 200
     assert res.json()["acknowledged"] is True
+    # Attribution comes from the API key, never from the request body.
+    assert res.json()["acknowledged_by"] == settings.operator_name
 
     # Clear occupancy for isolation.
     client.post(

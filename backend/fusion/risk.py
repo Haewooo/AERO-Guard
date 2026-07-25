@@ -13,6 +13,8 @@ import time
 import uuid
 from typing import Any
 
+from ..observability import metrics
+from .gating import SignalGate
 from .verifier import Severity
 
 _PRIORITY = {
@@ -29,17 +31,33 @@ _RUNWAY_SLOTS = {"runway", "hold_short", "taxi_to"}
 class RiskEngine:
     """Thread-safe in-process operational state + alert store.
 
+    Reads are served from memory; mutations are written through to the
+    optional StateStore so runway occupancy and alerts survive a process
+    restart. Losing occupancy silently disables the incursion rule while
+    the service still looks healthy, so durability here is a safety
+    property, not a convenience.
+
     Horizontal scaling note: state is process-local by design for the
-    single-node on-premises PoC. For multi-instance deployment move
-    occupancy/alerts to a shared store (e.g. Redis) behind this same
-    interface.
+    single-node on-premises PoC. For multi-instance deployment swap the
+    store for a shared one (e.g. Redis) behind this same interface.
     """
 
-    def __init__(self, max_alerts: int = 500):
+    def __init__(
+        self,
+        max_alerts: int = 500,
+        store: Any | None = None,
+        signal_confirmations: int = 2,
+        signal_release_windows: int = 3,
+    ):
         self._lock = threading.Lock()
+        self._store = store
         self._occupancy: dict[str, str] = {}
         self._alerts: list[dict[str, Any]] = []
         self._max_alerts = max_alerts
+        self._gate = SignalGate(signal_confirmations, signal_release_windows)
+        if store is not None:
+            self._occupancy = store.load_occupancy()
+            self._alerts = store.load_alerts(max_alerts)
 
     # ── runway occupancy ────────────────────────────────────────────
     def set_occupancy(self, runway: str, callsign: str | None) -> dict[str, str]:
@@ -49,7 +67,13 @@ class RiskEngine:
                 self._occupancy[runway] = callsign.upper()
             else:
                 self._occupancy.pop(runway, None)
-            return dict(self._occupancy)
+            snapshot = dict(self._occupancy)
+        if self._store is not None:
+            if callsign:
+                self._store.set_occupancy(runway, callsign.upper(), time.time())
+            else:
+                self._store.clear_occupancy(runway)
+        return snapshot
 
     def get_occupancy(self) -> dict[str, str]:
         with self._lock:
@@ -75,10 +99,19 @@ class RiskEngine:
             "acknowledged": False,
             "ai_assisted": True,
         }
+        metrics.inc(
+            "aeroguard_alerts_total",
+            {"type": alert_type, "severity": severity.name},
+        )
         with self._lock:
             self._alerts.append(alert)
-            if len(self._alerts) > self._max_alerts:
+            trimmed = len(self._alerts) > self._max_alerts
+            if trimmed:
                 self._alerts = self._alerts[-self._max_alerts :]
+        if self._store is not None:
+            self._store.add_alert(alert)
+            if trimmed:
+                self._store.trim_alerts(self._max_alerts)
         return alert
 
     def acknowledge(self, alert_id: str, operator: str) -> dict[str, Any] | None:
@@ -88,8 +121,13 @@ class RiskEngine:
                     alert["acknowledged"] = True
                     alert["acknowledged_by"] = operator
                     alert["acknowledged_at"] = time.time()
-                    return dict(alert)
-        return None
+                    updated = dict(alert)
+                    break
+            else:
+                return None
+        if self._store is not None:
+            self._store.update_alert(updated)
+        return updated
 
     def recent_alerts(self, limit: int = 100) -> list[dict[str, Any]]:
         with self._lock:
@@ -159,7 +197,10 @@ class RiskEngine:
                     f"{finding['instructed']} ≠ readback {finding['readback']}"
                 )
             else:
-                msg = f"Readback missing [{finding['slot']}] instructed {finding['instructed']}"
+                msg = (
+                    f"Readback missing [{finding['slot']}] "
+                    f"instructed {finding['instructed']}"
+                )
             if callsign:
                 msg = f"{callsign}: {msg}"
             if escalated:
@@ -178,16 +219,29 @@ class RiskEngine:
         return alerts
 
     def evaluate_signal(self, signal_result: dict[str, Any]) -> dict[str, Any] | None:
-        """Emergency-stop marshalling signal raises an immediate alert."""
-        if signal_result.get("signal") == "emergency_stop":
-            return self._add_alert(
-                "MARSHALLING_EMERGENCY",
-                Severity.CRITICAL,
-                100,
-                "Marshaller EMERGENCY STOP hand signal detected",
-                {
-                    "signal": signal_result.get("signal"),
-                    "confidence": signal_result.get("confidence"),
-                },
-            )
-        return None
+        """Emergency-stop marshalling signal raises an alert, once per event.
+
+        Every window is fed to the gate — that is what advances the
+        confirmation streak and releases stale latches — but only a newly
+        confirmed, not-yet-latched emergency_stop produces an alert. See
+        fusion/gating.py for why firing per window was wrong.
+        """
+        signal = str(signal_result.get("signal") or "unknown")
+        metrics.inc("aeroguard_signals_total", {"signal": signal})
+        confirmed = self._gate.observe(signal)
+        if not confirmed or signal != "emergency_stop":
+            return None
+        return self._add_alert(
+            "MARSHALLING_EMERGENCY",
+            Severity.CRITICAL,
+            100,
+            "Marshaller EMERGENCY STOP hand signal detected",
+            {
+                "signal": signal,
+                "confidence": signal_result.get("confidence"),
+                "confirmed_windows": self._gate.state()["confirmations_required"],
+            },
+        )
+
+    def signal_gate_state(self) -> dict[str, Any]:
+        return self._gate.state()

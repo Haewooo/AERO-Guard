@@ -70,7 +70,11 @@ def test_acknowledge_flow():
 
 
 def test_emergency_stop_signal_alert():
-    engine = RiskEngine()
-    alert = engine.evaluate_signal({"signal": "emergency_stop", "confidence": 0.9})
+    engine = RiskEngine(signal_confirmations=2, signal_release_windows=3)
+    emergency = {"signal": "emergency_stop", "confidence": 0.9}
+    # Fires on the first window: a delayed emergency stop is worse than a
+    # dismissed one. It then latches, so it cannot repeat.
+    alert = engine.evaluate_signal(emergency)
     assert alert is not None and alert["severity"] == "CRITICAL"
+    assert engine.evaluate_signal(emergency) is None
     assert engine.evaluate_signal({"signal": "move_ahead", "confidence": 0.9}) is None
