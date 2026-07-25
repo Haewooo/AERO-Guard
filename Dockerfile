@@ -1,5 +1,8 @@
-# python 3.12: mediapipe (webcam pose extraction) has no 3.13 wheels yet
-FROM python:3.12-slim AS base
+# python 3.12: mediapipe (webcam pose extraction) has no 3.13 wheels yet.
+# Pinned by digest, not by tag: a floating tag means two builds of the same
+# commit can produce different images. Refresh with:
+#   docker pull python:3.12-slim && docker inspect --format='{{index .RepoDigests 0}}' python:3.12-slim
+FROM python@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -14,9 +17,19 @@ RUN groupadd -r aeroguard && useradd -r -g aeroguard aeroguard
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir "mediapipe>=0.10" "faster-whisper>=1.0" "piper-tts>=1.4"
+# Every dependency, including the heavy optional ones, is installed from a
+# hash-pinned lock: the build fails rather than silently accepting a wheel
+# that does not match the recorded SHA-256. The lock is per architecture
+# because some wheels (mediapipe) are published at different versions for
+# x86_64 and aarch64. Regenerate with ./scripts/lock-requirements.sh.
+ARG TARGETARCH
+COPY requirements-full-x86_64.lock requirements-full-aarch64.lock ./
+RUN case "${TARGETARCH:-amd64}" in \
+      amd64) LOCK=requirements-full-x86_64.lock ;; \
+      arm64) LOCK=requirements-full-aarch64.lock ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && pip install --no-cache-dir --require-hashes -r "$LOCK"
 
 # Pre-fetch Whisper weights at build time so the deployed container never
 # needs network access (read-only fs + HF_HUB_OFFLINE below). The piper TTS
@@ -30,10 +43,16 @@ RUN python -c "from faster_whisper import WhisperModel; WhisperModel('base', dev
 COPY backend ./backend
 COPY frontend ./frontend
 
-RUN mkdir -p /data && chown aeroguard:aeroguard /data
-VOLUME ["/data"]
+# /data holds the audit database; /anchors holds the chain-head anchor log.
+# They are separate volumes so a rewrite of the database is still
+# contradicted by the anchors.
+RUN mkdir -p /data /anchors && chown aeroguard:aeroguard /data /anchors
+VOLUME ["/data", "/anchors"]
 
+# The audit HMAC key defaults to audit.key beside the database (/data);
+# override AEROGUARD_AUDIT_KEY from a secret store in production.
 ENV AEROGUARD_DB_PATH=/data/audit.db \
+    AEROGUARD_AUDIT_ANCHOR_PATH=/anchors/audit-anchors.log \
     AEROGUARD_HOST=0.0.0.0 \
     AEROGUARD_PORT=8000 \
     MPLCONFIGDIR=/tmp/matplotlib \

@@ -4,15 +4,43 @@ services:
     image: aeroguard:latest
     restart: unless-stopped
     ports:
-      # host port is overridable so several copies of the repo can run
-      # side by side (the launchers pick the first free port)
-      - "${AEROGUARD_PORT:-8000}:8000"
+      # Bound to loopback: the HMI is an on-console tool served over plain
+      # HTTP with the key in the URL, so it must not be reachable from the
+      # network. Set AEROGUARD_BIND=0.0.0.0 only behind a TLS terminating
+      # reverse proxy, and set AEROGUARD_TRUSTED_PROXIES to that proxy.
+      # The host port stays overridable so several copies of the repo can
+      # run side by side (the launchers pick the first free port).
+      - "${AEROGUARD_BIND:-127.0.0.1}:${AEROGUARD_PORT:-8000}:8000"
     environment:
       # Set a strong key in production: openssl rand -base64 32
       AEROGUARD_API_KEY: ${AEROGUARD_API_KEY:?set AEROGUARD_API_KEY in .env}
+      # Per-operator keys ("twr-1:KEY1,gnd-2:KEY2") — audit attribution.
+      AEROGUARD_API_KEYS: ${AEROGUARD_API_KEYS:-}
+      # Externally managed audit-chain key; generated in /data if unset.
+      AEROGUARD_AUDIT_KEY: ${AEROGUARD_AUDIT_KEY:-}
+      AEROGUARD_TRUSTED_PROXIES: ${AEROGUARD_TRUSTED_PROXIES:-}
       AEROGUARD_DB_PATH: /data/audit.db
     volumes:
       - audit-data:/data
+      # Chain-head anchors on a separate volume: a full rewrite of
+      # audit.db is still detectable as long as this survives it.
+      - audit-anchors:/anchors
+    deploy:
+      resources:
+        limits:
+          # Bounds a runaway container without starving the annunciator.
+          # TTS latency tracks this quota almost linearly (measured on a
+          # 14-core host, piper en_US-amy-medium):
+          #   2 CPU -> 1498 ms | 4 -> 591 ms | 6 -> 363 ms | 8 -> 262 ms
+          # A master-warning callout that takes 1.5 s is not a warning, so
+          # the ceiling sits high. Lower it with AEROGUARD_CPUS on a shared
+          # host, accepting the latency above.
+          cpus: "${AEROGUARD_CPUS:-8.0}"
+          # Whisper + MediaPipe + piper sessions resident together.
+          memory: ${AEROGUARD_MEMORY:-3g}
+          pids: 512
+        reservations:
+          memory: 512m
     healthcheck:
       test:
         - CMD
@@ -31,3 +59,4 @@ services:
 
 volumes:
   audit-data:
+  audit-anchors:
