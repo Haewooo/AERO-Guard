@@ -1,0 +1,41 @@
+# gitleaks configuration.
+#
+# The scan covers git history, not just the working tree, because a secret
+# that was committed and then removed is still published — the commit is
+# what an attacker reads, not the tip.
+
+[extend]
+useDefault = true
+
+[[rules]]
+# The real thing this repository must never leak. The launcher writes an
+# `openssl rand -base64 32` key into .env (gitignored), and the audit HMAC
+# key is generated into the data volume; either appearing in a tracked file
+# means the ignore rules failed.
+id = "aeroguard-api-key"
+description = "AeroGuard API or audit key committed in cleartext"
+regex = '''AEROGUARD_(API|AUDIT)_KEY\s*[=:]\s*["']?[A-Za-z0-9+/=_-]{20,}'''
+tags = ["key", "aeroguard"]
+
+[rules.allowlist]
+regexTarget = "match"
+regexes = [
+  # The documented placeholder in .env.example, which is the whole point of
+  # that file.
+  '''change-me-to-a-long-random-value''',
+]
+
+[allowlist]
+description = "Paths and literals that are not credentials"
+paths = [
+  # Wheel hashes in the dependency locks are high-entropy by construction.
+  '''requirements-full-.*\.lock''',
+  # Committed model weights.
+  '''models/.*\.onnx.*''',
+]
+regexes = [
+  # Fixed literal used by the CI smoke test to prove the container comes up
+  # authenticated. It is generated per run in real deployments and grants
+  # nothing — the container it talks to is destroyed in the same step.
+  '''ci-smoke-test-key''',
+]
