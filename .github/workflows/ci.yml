@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests + lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      # `ruff check` only. `ruff format` is deliberately not enforced: the
+      # codebase predates it and reformatting would bury real changes under
+      # a whole-tree diff.
+      - name: Lint
+        run: ruff check backend tests evaluation
+
+      - name: Tests
+        run: pytest tests -q --junit-xml=test-results.xml
+
+      - name: Classifier evaluation report
+        run: python -m evaluation.evaluate_classifier --out evaluation/REPORT.md
+
+      - name: Fail if the evaluation report is stale
+        run: |
+          if ! git diff --quiet -- evaluation/REPORT.md; then
+            echo "::error::evaluation/REPORT.md is out of date."
+            echo "Run: python -m evaluation.evaluate_classifier"
+            git --no-pager diff -- evaluation/REPORT.md
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: test-results.xml
+
+  dependencies:
+    name: dependency audit + SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install audit tooling
+        run: pip install pip-audit cyclonedx-bom
+
+      - name: Verify the lock installs from its recorded hashes
+        # Proves the lock is a complete, self-consistent closure — the
+        # property that makes the shipped image reproducible.
+        run: |
+          python -m venv /tmp/lockcheck
+          /tmp/lockcheck/bin/pip install --require-hashes -r requirements-full-x86_64.lock
+
+      - name: Audit for known vulnerabilities
+        run: pip-audit --requirement requirements-full-x86_64.lock --strict
+
+      - name: Generate SBOM
+        run: |
+          /tmp/lockcheck/bin/pip install cyclonedx-bom
+          /tmp/lockcheck/bin/cyclonedx-py environment /tmp/lockcheck \
+            --output-format json --outfile sbom.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+
+  image:
+    name: image build + scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: aeroguard:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: aeroguard:ci
+          format: sarif
+          output: trivy.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Fail on fixable CRITICAL/HIGH
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: aeroguard:ci
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-sarif
+          path: trivy.sarif
+
+      - name: Smoke test the built image
+        run: |
+          docker run -d --name aeroguard-ci \
+            -e AEROGUARD_API_KEY=ci-smoke-test-key \
+            -p 127.0.0.1:8000:8000 aeroguard:ci
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8000/healthz && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8000/healthz
+          curl -sf http://127.0.0.1:8000/metrics | grep -q aeroguard_requests_total
+          # Audit chain must come up keyed, not as a plain hash chain.
+          curl -sf -H "X-API-Key: ci-smoke-test-key" \
+            http://127.0.0.1:8000/api/audit/verify | grep -q '"algo":"hmac-sha256"'
+          docker rm -f aeroguard-ci
